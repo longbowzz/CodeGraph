@@ -1,6 +1,9 @@
 # Runtime artifacts (per-repo, per-user state)
 .codegraph/
 
+# Internal development docs (not for public consumption)
+docs/
+
 # Node
 node_modules/
 *.log
