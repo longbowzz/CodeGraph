@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodeGraph — __TOPIC__</title>
+  <style>
+__CSS__
+  </style>
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>CodeGraph</h1>
+      <span class="topic" id="topic">__TOPIC__</span>
+      <span style="color: var(--muted); font-size: 12px;" id="repo"></span>
+      <span class="spacer"></span>
+      <div class="tabs" id="tabs">
+        <div class="tab hidden" id="tab-flowchart">Flowchart</div>
+        <div class="tab hidden" id="tab-sequence">Sequence</div>
+      </div>
+      <select id="editor-select" title="Editor for click-to-jump"></select>
+      <button id="reset-view" title="Reset zoom/pan">Reset View</button>
+    </header>
+
+    <div id="safari-warn">
+      Tip: open in Chrome / Edge / Firefox for silent click-to-jump. Safari will
+      prompt on every click.
+    </div>
+
+    <div id="canvas-wrap">
+      <svg class="cg-svg" id="svg-flowchart" xmlns="http://www.w3.org/2000/svg" style="display:none"></svg>
+      <svg class="cg-svg" id="svg-sequence" xmlns="http://www.w3.org/2000/svg" style="display:none"></svg>
+      <div id="loading">Loading graph…</div>
+    </div>
+
+    <footer>
+      Hover to highlight · Click to open in editor · Scroll to zoom · Drag to pan
+    </footer>
+  </div>
+
+  <script id="cg-data" type="application/json">__DATA__</script>
+  <script>__DAGRE__</script>
+  <script>__RENDER__</script>
+</body>
+</html>
