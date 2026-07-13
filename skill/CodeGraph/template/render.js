@@ -116,6 +116,22 @@
     return out;
   }
 
+  // Snap a point on a node's boundary to the nearest of four fixed anchors.
+  // For rect/terminal/storage these are the side midpoints; for the decision
+  // diamond they are the vertices. Both share the same coordinates:
+  //   top (cx, y)   bottom (cx, y+h)   left (x, cy)   right (x+w, cy)
+  // Direction-from-center decides which anchor wins, so each node always has
+  // a predictable in/out point regardless of where dagre's router landed.
+  function anchorFor(node, pt) {
+    const cx = node.x, cy = node.y;
+    const w2 = node.width / 2, h2 = node.height / 2;
+    const dx = pt.x - cx, dy = pt.y - cy;
+    if (Math.abs(dx) > Math.abs(dy)) {
+      return { x: dx > 0 ? cx + w2 : cx - w2, y: cy };
+    }
+    return { x: cx, y: dy >= 0 ? cy + h2 : cy - h2 };
+  }
+
   // Convert an array of {x,y} points (dagre edge waypoints) to a smooth SVG
   // path using centripetal Catmull-Rom → cubic Bezier conversion. Centripetal
   // (α=0.5) parameterization avoids the cusps and overshoot that uniform CR
@@ -213,15 +229,27 @@
       grp.setAttribute('class', 'cg-edge' + (meta.style === 'dashed' ? ' cg-dashed' : ''));
       grp.setAttribute('data-from', e.v);
       grp.setAttribute('data-to', e.w);
+      // Snap endpoints to fixed anchors on the node boundary:
+      //   rect/terminal/storage → midpoint of the nearest side
+      //   decision (diamond)    → nearest vertex
+      // Both shapes share the same four anchor coordinates, so one formula
+      // covers everything. Direction-from-center picks which anchor, so the
+      // edge always leaves from a consistent point instead of drifting along
+      // the boundary.
+      const pts = ed.points.slice();
+      const srcNode = g.node(e.v);
+      const tgtNode = g.node(e.w);
+      if (srcNode && pts.length > 0) pts[0] = anchorFor(srcNode, pts[0]);
+      if (tgtNode && pts.length > 1) pts[pts.length - 1] = anchorFor(tgtNode, pts[pts.length - 1]);
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       // Use smooth Catmull-Rom curves through dagre's waypoints.
-      path.setAttribute('d', smoothPathThrough(ed.points));
+      path.setAttribute('d', smoothPathThrough(pts));
       path.setAttribute('marker-end', meta.style === 'dashed' ? 'url(#cg-arrow-dashed)' : 'url(#cg-arrow-solid)');
       if (meta.style === 'dashed') path.style.strokeDasharray = '5 3';
       grp.appendChild(path);
       if (meta.label) {
         // Place label near the midpoint of the smoothed path.
-        const mid = ed.points[Math.floor(ed.points.length / 2)];
+        const mid = pts[Math.floor(pts.length / 2)];
         // Offset perpendicular to the path so the label doesn't sit on the line.
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         text.setAttribute('x', mid.x);
