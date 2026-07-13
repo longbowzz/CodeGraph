@@ -333,12 +333,13 @@
   // SEQUENCE RENDERING (hand-rolled)
   // ============================================================
   function renderSequence(svg, sq) {
-    const PADX = 40, PADTOP = 60, ROWH = 44, ACTOR_W = 140, ACTOR_H = 36, LIFELINE_BOTTOM_PAD = 40;
+    const PADX = 40, PADTOP = 60, MSG_GAP_TOP = 36, ROWH = 44, ACTOR_W = 140, ACTOR_H = 36, LIFELINE_BOTTOM_PAD = 40;
     const actorX = new Map();
     sq.actors.forEach((a, i) => actorX.set(a.id, PADX + ACTOR_W / 2 + i * (ACTOR_W + 60)));
 
-    // Compute messages y
-    const msgs = sq.messages.map((m, i) => ({ ...m, y: PADTOP + i * ROWH }));
+    // Compute messages y. MSG_GAP_TOP leaves room below the actor headers so
+    // the first message label doesn't collide with the actor boxes.
+    const msgs = sq.messages.map((m, i) => ({ ...m, y: PADTOP + MSG_GAP_TOP + i * ROWH }));
 
     const maxBottomY = msgs.length > 0 ? msgs[msgs.length - 1].y : PADTOP;
     const lifelineBottom = maxBottomY + LIFELINE_BOTTOM_PAD;

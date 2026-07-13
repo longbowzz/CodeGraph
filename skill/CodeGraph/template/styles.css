@@ -97,12 +97,17 @@ svg.cg-svg { width: 100%; height: 100%; display: block; user-select: none; }
 .cg-actor rect { fill: #fff; stroke: #888; stroke-width: 1.5; }
 .cg-actor text { font-size: 13px; pointer-events: none; user-select: none; }
 .cg-lifeline { stroke: #aaa; stroke-dasharray: 4 4; stroke-width: 1; }
-.cg-msg path { fill: none; stroke: #555; stroke-width: 1.5; marker-end: url(#cg-arrow-solid); }
-.cg-msg.cg-return path { stroke-dasharray: 5 3; marker-end: url(#cg-arrow-dashed); }
-.cg-msg.cg-async path { marker-end: url(#cg-arrow-async); }
+/* marker-end is set per-path via inline attribute so each SVG can reference
+   its own defs (cg-arrow-* for flowchart, cg-seq-* for sequence). Don't set
+   marker-end here — CSS would override the inline attribute and break arrows. */
+.cg-msg path { fill: none; stroke: #555; stroke-width: 1.5; }
+.cg-msg.cg-return path { stroke-dasharray: 5 3; }
 .cg-msg:hover path { stroke: var(--accent); stroke-width: 2.5; }
-.cg-msg text { font-size: 12px; fill: #333; pointer-events: none; user-select: none; }
-.cg-self-loop path { fill: none; stroke: #555; stroke-width: 1.5; marker-end: url(#cg-arrow-solid); }
+/* Text shares the .cg-msg group's hover; let pointer events through so the
+   label is also a click/hover target, not just the 1.5px line. */
+.cg-msg text { font-size: 12px; fill: #333; pointer-events: all; cursor: pointer; }
+.cg-msg:hover text { fill: var(--accent); }
+.cg-self-loop path { fill: none; stroke: #555; stroke-width: 1.5; }
 
 .cg-note rect { fill: #fff9c4; stroke: #d9a400; stroke-width: 1; }
 .cg-note text { font-size: 11px; fill: #555; }
