@@ -76,7 +76,9 @@ svg.cg-svg { width: 100%; height: 100%; display: block; user-select: none; }
 .cg-node rect, .cg-node polygon, .cg-node circle {
   fill: var(--node-fill); stroke: var(--node-stroke); stroke-width: 1.5;
   transition: fill 0.1s;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.08));
 }
+.cg-node rect { rx: 8; }
 .cg-node text { fill: var(--node-text); font-size: 13px; pointer-events: none; user-select: none; }
 .cg-node[data-shape="decision"] polygon { fill: var(--decision-fill); stroke: var(--decision-stroke); }
 .cg-node[data-shape="terminal"] polygon { fill: var(--terminal-fill); stroke: var(--terminal-stroke); }
@@ -87,7 +89,7 @@ svg.cg-svg { width: 100%; height: 100%; display: block; user-select: none; }
 
 .cg-node:hover rect,
 .cg-node:hover polygon,
-.cg-node:hover circle { fill: var(--highlight) !important; stroke: var(--accent); }
+.cg-node:hover circle { fill: var(--highlight) !important; stroke: var(--accent); stroke-width: 2; }
 .cg-node[data-loc="true"] { cursor: pointer; }
 .cg-edge:hover path { stroke: var(--accent); stroke-width: 2.5; }
 

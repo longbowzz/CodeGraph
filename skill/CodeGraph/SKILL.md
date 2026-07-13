@@ -201,11 +201,45 @@ Edge declarations (one of four styles only):
 - Must be unique across the file.
 - Do NOT start with a digit, do NOT contain `-` or `.`.
 
-**Label rules**:
+**Label rules (syntax)**:
 - Avoid `]`, `}`, `|` inside labels. If you must include them, escape as
   `&#93;`, `&#125;`, `&#124;`.
-- Keep labels short. Use the user's language.
-- Function-call labels are encouraged: `authenticateUser()`.
+- Keep labels concise (ideally ≤ 20 characters; the renderer wraps on `\n`
+  only — long single-line labels make wide boxes).
+
+**Label rules (content — IMPORTANT)**:
+
+Labels must be **concise, human-readable descriptions in the user's language**,
+not raw identifiers or code snippets. The audience is a non-engineer (e.g. a
+product manager) trying to understand the flow at a glance.
+
+Rules:
+1. **Description first, function name optional.** The description must make
+   sense standalone. The function name may be appended in parentheses as an
+   annotation for engineers who want to dig deeper.
+2. **Use the user's preferred language** for the description (e.g. Chinese if
+   the user is conversing in Chinese). Function names, HTTP methods, and
+   status codes stay in English.
+3. **Never use a raw function name, file name, class name, or code snippet
+   as the entire label.** Always pair it with a description.
+4. **For decision nodes (`{...}`)**, phrase the label as a yes/no question
+   or a clear condition — not as the variable being checked.
+
+| Bad | Good | Why |
+|---|---|---|
+| `[verifyPassword()]` | `[校验用户密码 verifyPassword()]` | Description first; function name as annotation |
+| `[handleInput]` | `[读取用户输入]` | Description only when name adds nothing |
+| `[if (user.role === 'admin')]` | `{是管理员?}` | Decisions must be questions, not code |
+| `[POST /api/login]` | `[发送登录请求 POST /api/login]` | Description first; endpoint as annotation |
+| `[user.isAuthenticated()]` | `{已登录?}` | Decisions must be questions, not code |
+| `[return 401]` | `[返回未授权 401]` | Translate / annotate; bare codes are opaque |
+| `[processPayment(userId, amount)]` | `[处理支付 processPayment()]` | Description first; drop noisy parameters |
+| `[step1]` | `[第一步：解析请求]` | Placeholder names are forbidden |
+| `[AuthService.login()]` | `[登录鉴权 AuthService.login()]` | Description first; qualified name as annotation |
+
+The label-content rules apply equally to **sequence message text** and to
+**sequence actor display names** (actor names should be role-based: `Client`,
+`Auth Service`, `数据库` — not raw class names).
 
 **Forbidden in flowcharts** (validator will reject; non-exhaustive — anything
 not in the ALLOWED tables above is rejected):
@@ -377,9 +411,9 @@ structure exactly.
 ```
 flowchart TD
     A([接收登录请求]) --> B{已登录?}
-    B -->|是| C[返回用户信息]
-    B -->|否| D[验证密码]
-    D --> E[生成 token]
+    B -->|是| C[返回用户信息 getUserInfo]
+    B -->|否| D[验证密码 verifyPassword]
+    D --> E[生成 token issueToken]
     E --> C
     C --> F[(写审计日志)]
 ```

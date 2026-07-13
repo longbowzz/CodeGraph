@@ -73,18 +73,63 @@
   // ============================================================
   // FLOWCHART RENDERING (uses dagre)
   // ============================================================
+
+  // CJK / full-width char detection for width estimation.
+  // Covers CJK Unified, CJK punctuation, full-width forms, Hiragana, Katakana, Hangul.
+  const CJK_RE = /[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef\uac00-\ud7af]/;
+
+  // Estimate rendered width of a string at 13px font.
+  // CJK / full-width chars ≈ 14px; ASCII ≈ 7px; other Latin ≈ 8px.
+  function estimateTextWidth(s) {
+    let w = 0;
+    for (const c of s) {
+      if (CJK_RE.test(c)) w += 14;
+      else if (/[a-z0-9]/.test(c)) w += 7;
+      else if (/[A-Z]/.test(c)) w += 9;
+      else if (c === ' ') w += 4;
+      else w += 8; // punctuation
+    }
+    return w;
+  }
+
+  // Convert an array of {x,y} points (dagre edge waypoints) to a smooth SVG
+  // path using Catmull-Rom → cubic Bezier conversion. Produces curves similar
+  // to Mermaid's default edge style. Falls back to a straight line for 2 points.
+  function smoothPathThrough(points) {
+    if (!points || points.length === 0) return '';
+    if (points.length === 1) return `M${points[0].x},${points[0].y}`;
+    if (points.length === 2) {
+      return `M${points[0].x},${points[0].y} L${points[1].x},${points[1].y}`;
+    }
+    let d = `M${points[0].x},${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p0 = points[i - 1] || points[i];
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const p3 = points[i + 2] || p2;
+      // Catmull-Rom to Bezier (tension 0.5). The /6 factor is standard.
+      const cp1x = p1.x + (p2.x - p0.x) / 6;
+      const cp1y = p1.y + (p2.y - p0.y) / 6;
+      const cp2x = p2.x - (p3.x - p1.x) / 6;
+      const cp2y = p2.y - (p3.y - p1.y) / 6;
+      d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
+    }
+    return d;
+  }
+
   function renderFlowchart(svg, fc) {
     const g = new dagre.graphlib.Graph();
-    g.setGraph({ rankdir: fc.direction === 'LR' ? 'LR' : 'TB', nodesep: 40, ranksep: 60, marginx: 20, marginy: 20 });
+    g.setGraph({ rankdir: fc.direction === 'LR' ? 'LR' : 'TB', nodesep: 50, ranksep: 70, marginx: 20, marginy: 20 });
     g.setDefaultEdgeLabel(() => ({}));
 
     for (const n of fc.nodes) {
       const loc = fc.locs && fc.locs[n.id];
       const label = n.label != null ? n.label : n.id;
-      // Estimate size
       const lines = String(label).split('\n');
-      const w = Math.max(60, Math.max(...lines.map(s => s.length)) * 8 + 24);
-      const h = Math.max(36, lines.length * 18 + 16);
+      // CJK-aware size estimation; comfortable padding so text never overflows.
+      const widest = Math.max(...lines.map(s => estimateTextWidth(s)));
+      const w = Math.max(120, widest + 40);     // 20px padding each side
+      const h = Math.max(44, lines.length * 20 + 20); // 10px padding top/bottom
       g.setNode(n.id, { width: w, height: h, _meta: { ...n, location: loc } });
     }
     for (const e of fc.edges) {
@@ -102,7 +147,13 @@
       maxX = Math.max(maxX, nd.x + nd.width / 2);
       maxY = Math.max(maxY, nd.y + nd.height / 2);
     });
-    // Edges may extend beyond nodes; expand a bit
+    g.edges().forEach(e => {
+      const ed = g.edge(e);
+      ed.points.forEach(pt => {
+        minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y);
+        maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y);
+      });
+    });
     const pad = 20;
     minX -= pad; minY -= pad; maxX += pad; maxY += pad;
 
@@ -128,20 +179,18 @@
       grp.setAttribute('data-from', e.v);
       grp.setAttribute('data-to', e.w);
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      let d = '';
-      ed.points.forEach((pt, i) => {
-        d += (i === 0 ? 'M' : ' L') + pt.x + ',' + pt.y;
-      });
-      path.setAttribute('d', d);
+      // Use smooth Catmull-Rom curves through dagre's waypoints.
+      path.setAttribute('d', smoothPathThrough(ed.points));
       path.setAttribute('marker-end', meta.style === 'dashed' ? 'url(#cg-arrow-dashed)' : 'url(#cg-arrow-solid)');
       if (meta.style === 'dashed') path.style.strokeDasharray = '5 3';
       grp.appendChild(path);
       if (meta.label) {
-        // Place label at midpoint
+        // Place label near the midpoint of the smoothed path.
         const mid = ed.points[Math.floor(ed.points.length / 2)];
+        // Offset perpendicular to the path so the label doesn't sit on the line.
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         text.setAttribute('x', mid.x);
-        text.setAttribute('y', mid.y - 4);
+        text.setAttribute('y', mid.y - 6);
         text.setAttribute('text-anchor', 'middle');
         text.textContent = meta.label;
         grp.appendChild(text);
@@ -200,13 +249,13 @@
       const labelLines = String(meta.label != null ? meta.label : id).split('\n');
       const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
       text.setAttribute('x', cx);
-      text.setAttribute('y', cy - (labelLines.length - 1) * 9);
+      text.setAttribute('y', cy - (labelLines.length - 1) * 10);
       text.setAttribute('text-anchor', 'middle');
       text.setAttribute('dominant-baseline', 'middle');
       labelLines.forEach((line, i) => {
         const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
         tspan.setAttribute('x', cx);
-        tspan.setAttribute('dy', i === 0 ? 0 : 18);
+        tspan.setAttribute('dy', i === 0 ? 0 : 20);
         tspan.textContent = line;
         text.appendChild(tspan);
       });
