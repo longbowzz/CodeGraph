@@ -92,26 +92,61 @@
     return w;
   }
 
+  // Drop interior waypoints that sit (near-)on the line between their neighbors.
+  // Dagre emits one waypoint per rank crossed, so long edges carry dozens of
+  // collinear middle points. Feeding those to Catmull-Rom directly produces a
+  // "recurve bow" — a straight middle with opposite-curving ends — because the
+  // uneven spacing skews the tangent estimates. Simplifying first lets the
+  // smoothing see only real bends, so the curve reads as one cohesive whole.
+  function simplifyPoints(points, eps = 0.75) {
+    if (!points || points.length <= 2) return points || [];
+    const out = [points[0]];
+    for (let i = 1; i < points.length - 1; i++) {
+      const a = out[out.length - 1];
+      const b = points[i];
+      const c = points[i + 1];
+      const dx = c.x - a.x, dy = c.y - a.y;
+      const segLen = Math.hypot(dx, dy);
+      // Perpendicular distance from b to line a→c = |(b-a) × (c-a)| / |c-a|
+      const cross = (b.x - a.x) * dy - (b.y - a.y) * dx;
+      const dist = segLen > 1e-6 ? Math.abs(cross) / segLen : 0;
+      if (dist > eps) out.push(b);
+    }
+    out.push(points[points.length - 1]);
+    return out;
+  }
+
   // Convert an array of {x,y} points (dagre edge waypoints) to a smooth SVG
-  // path using Catmull-Rom → cubic Bezier conversion. Produces curves similar
-  // to Mermaid's default edge style. Falls back to a straight line for 2 points.
-  function smoothPathThrough(points) {
+  // path using centripetal Catmull-Rom → cubic Bezier conversion. Centripetal
+  // (α=0.5) parameterization avoids the cusps and overshoot that uniform CR
+  // produces on unevenly-spaced points, giving Mermaid-like flowing curves.
+  function smoothPathThrough(rawPoints) {
+    const points = simplifyPoints(rawPoints);
     if (!points || points.length === 0) return '';
     if (points.length === 1) return `M${points[0].x},${points[0].y}`;
     if (points.length === 2) {
       return `M${points[0].x},${points[0].y} L${points[1].x},${points[1].y}`;
     }
-    let d = `M${points[0].x},${points[0].y}`;
+    let d = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
     for (let i = 0; i < points.length - 1; i++) {
       const p0 = points[i - 1] || points[i];
       const p1 = points[i];
       const p2 = points[i + 1];
       const p3 = points[i + 2] || p2;
-      // Catmull-Rom to Bezier (tension 0.5). The /6 factor is standard.
-      const cp1x = p1.x + (p2.x - p0.x) / 6;
-      const cp1y = p1.y + (p2.y - p0.y) / 6;
-      const cp2x = p2.x - (p3.x - p1.x) / 6;
-      const cp2y = p2.y - (p3.y - p1.y) / 6;
+      // Centripetal distances (α=0.5): sqrt of segment length.
+      const s01 = Math.max(1e-3, Math.hypot(p1.x - p0.x, p1.y - p0.y) ** 0.5);
+      const s12 = Math.max(1e-3, Math.hypot(p2.x - p1.x, p2.y - p1.y) ** 0.5);
+      const s23 = Math.max(1e-3, Math.hypot(p3.x - p2.x, p3.y - p2.y) ** 0.5);
+      // Hermite tangents at p1 and p2 (central differences, scaled by centripetal weights).
+      const m1x = ((p2.x - p1.x) * s01 + (p1.x - p0.x) * s12) / (s01 + s12);
+      const m1y = ((p2.y - p1.y) * s01 + (p1.y - p0.y) * s12) / (s01 + s12);
+      const m2x = ((p3.x - p2.x) * s12 + (p2.x - p1.x) * s23) / (s12 + s23);
+      const m2y = ((p3.y - p2.y) * s12 + (p2.y - p1.y) * s23) / (s12 + s23);
+      // Hermite → cubic Bezier: cp1 = p1 + m1/3, cp2 = p2 - m2/3.
+      const cp1x = p1.x + m1x / 3;
+      const cp1y = p1.y + m1y / 3;
+      const cp2x = p2.x - m2x / 3;
+      const cp2y = p2.y - m2y / 3;
       d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
     }
     return d;
