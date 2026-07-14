@@ -31,3 +31,4 @@ venv/
 # Build output
 dist/
 build/
+CLAUDE.md
