@@ -207,3 +207,41 @@ footer { padding: 6px 16px; border-top: 1px solid #ddd; font-size: 11px; color: 
 
 /* Initial loading state */
 #loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 14px; }
+
+/* ============================================================
+   Highlight.js GitHub theme — scoped to the web-mode code pane.
+   Source: highlight.js/styles/github.css. Every selector is pinned
+   under `body.cg-web-mode .cg-line-content` so token colors don't
+   leak into the SVG graph canvas. The original `pre code.hljs`
+   padding rules and the `.hljs` background are dropped (layout is
+   owned by .cg-code-line above); only token colors are kept.
+   ============================================================ */
+body.cg-web-mode .cg-line-content .hljs { color: #24292e; }
+body.cg-web-mode .cg-line-content :is(
+  .hljs-doctag, .hljs-keyword, .hljs-template-tag, .hljs-template-variable,
+  .hljs-type, .hljs-variable.language_, .hljs-meta .hljs-keyword
+) { color: #d73a49; }
+body.cg-web-mode .cg-line-content :is(
+  .hljs-title, .hljs-title.class_, .hljs-title.class_.inherited__,
+  .hljs-title.function_
+) { color: #6f42c1; }
+body.cg-web-mode .cg-line-content :is(
+  .hljs-attr, .hljs-attribute, .hljs-literal, .hljs-meta, .hljs-number,
+  .hljs-operator, .hljs-variable, .hljs-selector-attr, .hljs-selector-class,
+  .hljs-selector-id
+) { color: #005cc5; }
+body.cg-web-mode .cg-line-content :is(
+  .hljs-regexp, .hljs-string, .hljs-meta .hljs-string
+) { color: #032f62; }
+body.cg-web-mode .cg-line-content :is(.hljs-built_in, .hljs-symbol) { color: #e36209; }
+body.cg-web-mode .cg-line-content :is(.hljs-comment, .hljs-code, .hljs-formula) { color: #6a737d; }
+body.cg-web-mode .cg-line-content :is(
+  .hljs-name, .hljs-quote, .hljs-selector-tag, .hljs-selector-pseudo
+) { color: #22863a; }
+body.cg-web-mode .cg-line-content .hljs-subst { color: #24292e; }
+body.cg-web-mode .cg-line-content .hljs-section { color: #005cc5; font-weight: bold; }
+body.cg-web-mode .cg-line-content .hljs-bullet { color: #735c0f; }
+body.cg-web-mode .cg-line-content .hljs-emphasis { color: #24292e; font-style: italic; }
+body.cg-web-mode .cg-line-content .hljs-strong { color: #24292e; font-weight: bold; }
+body.cg-web-mode .cg-line-content .hljs-addition { color: #22863a; background-color: #f0fff4; }
+body.cg-web-mode .cg-line-content .hljs-deletion { color: #b31d28; background-color: #ffeef0; }
