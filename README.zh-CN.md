@@ -117,6 +117,8 @@ node skill/CodeGraph/scripts/build-html.mjs \
 
 **Web** 编辑器不会启动外部应用。构建时会把图里引用到的源文件全部嵌入 HTML，点击节点时直接在同一浏览器标签页右侧的代码面板里打开源码——语法高亮、自动滚到目标行。画布与代码之间有可拖拽的分隔条（默认画布:代码 = 1:2，双击分隔条可重置）。本地没有装受支持的编辑器时推荐用这个模式。
 
+![Web 编辑器：页内代码面板](images/web-mode.png)
+
 **不支持**（没有原生 URL scheme）：Sublime、Zed、Neovim、Vim、Trae。
 
 > Safari 每次点击都会弹确认框；Chrome / Firefox / Edge 只问一次并记住。推荐用 Chrome 获得最顺滑的跳转体验。
@@ -138,7 +140,8 @@ CodeGraph/
 │   │   ├── render.js             # SVG 渲染 + 缩放/平移 + 点击处理
 │   │   └── styles.css
 │   └── vendor/
-│       └── dagre.min.js          # 打包的 @dagrejs/dagre + graphlib
+│       ├── dagre.min.js          # 打包的 @dagrejs/dagre + graphlib
+│       └── highlight.min.js      # 打包的 highlight.js（仅 web 编辑器用）
 ├── images/                       # README 截图
 ├── LICENSE
 └── README.md

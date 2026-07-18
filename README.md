@@ -122,6 +122,8 @@ browser tab — syntax-highlighted and scrolled to the target line. A draggable
 splitter divides the canvas from the code (default canvas:code = 1:2; double-click
 the splitter to reset). Use this when no supported editor is installed locally.
 
+![Web editor: in-page code panel](images/web-mode.png)
+
 **Not supported** (no native URL scheme): Sublime, Zed, Neovim, Vim, Trae.
 
 > Safari shows a confirmation prompt on every click. Chrome / Firefox / Edge ask once and remember. Recommend Chrome for frictionless jumping.
@@ -143,7 +145,8 @@ CodeGraph/
 │   │   ├── render.js             # SVG renderer + zoom/pan + click handler
 │   │   └── styles.css
 │   └── vendor/
-│       └── dagre.min.js          # Bundled @dagrejs/dagre + graphlib
+│       ├── dagre.min.js          # Bundled @dagrejs/dagre + graphlib
+│       └── highlight.min.js      # Bundled highlight.js (web editor only)
 ├── images/                       # README screenshots
 ├── LICENSE
 └── README.md
