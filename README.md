@@ -113,6 +113,14 @@ Click-to-jump uses OS-level URL schemes (no helper app required).
 | PyCharm | `pycharm://open?...` | ✅ |
 | WebStorm | `webstorm://open?...` | ✅ |
 | GoLand / PhpStorm / Rider / CLion / RubyMine | `<product>://open?...` | ✅ |
+| **Web (in-browser)** | — | ✅ |
+
+The **Web** editor doesn't launch an external app. Instead, the builder embeds
+every source file referenced by the graph into the HTML at build time, and
+clicking a node opens the source in a right-side code panel inside the same
+browser tab — syntax-highlighted and scrolled to the target line. A draggable
+splitter divides the canvas from the code (default canvas:code = 1:2; double-click
+the splitter to reset). Use this when no supported editor is installed locally.
 
 **Not supported** (no native URL scheme): Sublime, Zed, Neovim, Vim, Trae.
 

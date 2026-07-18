@@ -23,9 +23,10 @@ Required on the host machine:
 
 - **Node.js 18 or newer.** Verify with `node --version`. Required for
   `validate.mjs` and `build-html.mjs` (ESM + `node:` prefix imports).
-- **A supported editor** for click-to-jump (VS Code / Cursor / JetBrains family).
-  See §6 below for the full list. Must be installed and reachable via its OS
-  URL scheme.
+- **A supported editor** for click-to-jump (VS Code / Cursor / JetBrains family),
+  **or** the `web` editor which opens source in an in-page code panel (no
+  external editor needed). See §2 Step 1 and §6 for the full list. Non-`web`
+  editors must be installed and reachable via their OS URL scheme.
 - **An internet connection is NOT required** at any point after the skill is
   installed. The dagre layout library is vendored at `vendor/dagre.min.js`.
 
@@ -85,8 +86,11 @@ Execute these steps in order.
 2. If it does not exist, or `editor.id` is missing:
    - Ask the user to choose one editor from the supported list:
      `vscode`, `vscode-insiders`, `cursor`, `idea`, `pycharm`, `webstorm`,
-     `goland`, `phpstorm`, `rider`, `clion`, `rubymine`.
-   - Verify the editor is installed by running one of:
+     `goland`, `phpstorm`, `rider`, `clion`, `rubymine`, **`web`**.
+   - For the `web` editor: **no install verification is needed.** It opens
+     source in an in-page code panel inside the same browser tab — nothing
+     launches externally. Skip the `which` / `ls /Applications` check.
+   - For the other editors, verify the editor is installed by running one of:
      - `which code` (vscode)
      - `which cursor` (cursor)
      - `ls /Applications | grep -i "IntelliJ\|PyCharm\|WebStorm\|GoLand\|PhpStorm\|Rider\|CLion\|RubyMine\|VS Code\|Cursor"`
@@ -100,6 +104,15 @@ Execute these steps in order.
        "outputDir": ".codegraph/output"
      }
      ```
+
+     `web` is also a valid `editor.id` (e.g. `{"editor": {"id": "web", "label": "Web"}}`).
+
+> **Note on `web`**: when `editor.id === 'web'`, `build-html.mjs` embeds every
+> file referenced in `graph.locs.json` into the HTML at build time, and the
+> renderer opens an in-page code panel (right side of the canvas, default
+> canvas:code = 1:2, drag the splitter to resize) instead of jumping to an
+> external editor. This is useful when the viewer doesn't have a supported
+> editor installed locally. The HTML stays single-file and offline-capable.
 
 ### Step 2 — Alignment with user (max 3 rounds total)
 

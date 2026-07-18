@@ -9,7 +9,7 @@
 //
 // Outputs single self-contained HTML at --out.
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
@@ -128,20 +128,66 @@ const dataBlob = {
   sequence: merged.sequence || null,
 };
 
+// 6a. For `web` editor, embed every referenced source file so the in-page
+// code pane can display them without a server. Unreadable files are skipped
+// with a stderr warning (build continues).
+if (editor.id === 'web') {
+  const paths = new Set();
+  if (merged.flowchart?.locs) {
+    for (const v of Object.values(merged.flowchart.locs)) {
+      if (Array.isArray(v) && v[0]) paths.add(v[0]);
+    }
+  }
+  if (merged.sequence?.locs) {
+    const actors = merged.sequence.locs.actors || {};
+    for (const v of Object.values(actors)) {
+      if (Array.isArray(v) && v[0]) paths.add(v[0]);
+    }
+    const messages = merged.sequence.locs.messages || [];
+    for (const v of messages) {
+      if (Array.isArray(v) && v[0]) paths.add(v[0]);
+    }
+  }
+  const files = {};
+  for (const rel of paths) {
+    const abs = resolve(repoAbs, rel);
+    try {
+      if (!existsSync(abs)) {
+        console.error(`[web] skip missing: ${rel}`);
+        continue;
+      }
+      files[rel] = readFileSync(abs, 'utf8');
+    } catch (e) {
+      console.error(`[web] skip unreadable ${rel}: ${e.message}`);
+    }
+  }
+  dataBlob.files = files;
+}
+
 // 7. Read template parts
 const pageHtml = readFileSync(resolve(TEMPLATE_DIR, 'page.html'), 'utf8');
 const renderJs = readFileSync(resolve(TEMPLATE_DIR, 'render.js'), 'utf8');
 const stylesCss = readFileSync(resolve(TEMPLATE_DIR, 'styles.css'), 'utf8');
 const dagreJs = readFileSync(resolve(VENDOR_DIR, 'dagre.min.js'), 'utf8');
+// highlight.js is only inlined for the `web` editor (keeps other builds small).
+const highlightJs = editor.id === 'web'
+  ? readFileSync(resolve(VENDOR_DIR, 'highlight.min.js'), 'utf8')
+  : '';
 
 // 8. Inline. Use a sentinel unlikely to appear in data.
+// IMPORTANT: __DATA__ must be substituted LAST. The data blob may contain
+// arbitrary source code (embedded for the `web` editor), which can include
+// any of the other placeholder literals — replacing those after the data
+// would corrupt the JSON. Doing data last means earlier replaces only see
+// the real template placeholders.
 const dataJson = JSON.stringify(dataBlob);
 const out = pageHtml
   .replace('__CSS__', stylesCss)
   .replace(/__TOPIC__/g, escapeHtml(topicSlug))
-  .replace('__DATA__', dataJson)
   .replace('__DAGRE__', dagreJs)
-  .replace('__RENDER__', renderJs);
+  .replace('__HIGHLIGHT__', highlightJs)
+  .replace('__RENDER__', renderJs)
+  .replace('__DATA__', dataJson);
 
 // 9. Write
 mkdirSync(dirname(args.out), { recursive: true });

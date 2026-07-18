@@ -113,6 +113,9 @@ node skill/CodeGraph/scripts/build-html.mjs \
 | PyCharm | `pycharm://open?...` | ✅ |
 | WebStorm | `webstorm://open?...` | ✅ |
 | GoLand / PhpStorm / Rider / CLion / RubyMine | `<product>://open?...` | ✅ |
+| **Web（浏览器内）** | — | ✅ |
+
+**Web** 编辑器不会启动外部应用。构建时会把图里引用到的源文件全部嵌入 HTML，点击节点时直接在同一浏览器标签页右侧的代码面板里打开源码——语法高亮、自动滚到目标行。画布与代码之间有可拖拽的分隔条（默认画布:代码 = 1:2，双击分隔条可重置）。本地没有装受支持的编辑器时推荐用这个模式。
 
 **不支持**（没有原生 URL scheme）：Sublime、Zed、Neovim、Vim、Trae。
 

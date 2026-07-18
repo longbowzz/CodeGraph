@@ -70,6 +70,94 @@ body.safari #safari-warn { display: block; }
   cursor: grab;
 }
 #canvas-wrap:active { cursor: grabbing; }
+
+/* ---- Web (in-browser) code pane layout ---- */
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-height: 0;
+  overflow: hidden;
+}
+/* When not in web mode, #main collapses to a single column so #canvas-wrap
+   fills as before. Splitter and code-pane are hidden (see below). */
+body:not(.cg-web-mode) #main { display: block; }
+body:not(.cg-web-mode) #canvas-wrap { width: 100%; height: 100%; }
+
+#splitter {
+  flex: 0 0 6px;
+  background: #e4e4e4;
+  cursor: col-resize;
+  border-left: 1px solid #ddd;
+  border-right: 1px solid #ddd;
+  transition: background 0.1s;
+}
+#splitter:hover, #splitter.cg-dragging { background: var(--accent-soft); }
+
+#code-pane {
+  flex: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  background: #fff;
+  overflow: hidden;
+}
+#code-pane-header {
+  padding: 6px 12px;
+  border-bottom: 1px solid #ddd;
+  font-size: 12px;
+  color: var(--muted);
+  background: #fafafa;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+}
+#code-pane-body {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+#code-pane-body pre {
+  margin: 0;
+  padding: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  tab-size: 2;
+}
+#code-pane-body code { display: block; background: transparent; padding: 0; }
+.cg-code-line {
+  display: flex;
+  align-items: flex-start;
+  padding: 0 12px 0 0;
+}
+.cg-code-line .cg-line-num {
+  flex: 0 0 52px;
+  text-align: right;
+  padding-right: 12px;
+  color: #aaa;
+  user-select: none;
+  border-right: 1px solid #eee;
+  margin-right: 12px;
+}
+.cg-code-line .cg-line-content {
+  flex: 1;
+  white-space: pre;
+  min-width: 0;
+}
+.cg-current-line { background: rgba(255, 235, 59, 0.35); }
+.cg-current-line .cg-line-num { color: #6b4e00; font-weight: 600; }
+#code-pane-empty {
+  padding: 24px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Hide splitter + code-pane unless web mode is on. */
+body:not(.cg-web-mode) #splitter,
+body:not(.cg-web-mode) #code-pane { display: none; }
 svg.cg-svg { width: 100%; height: 100%; display: block; user-select: none; }
 
 /* SVG element styles */

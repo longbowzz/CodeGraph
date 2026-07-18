@@ -28,10 +28,17 @@ __CSS__
       prompt on every click.
     </div>
 
-    <div id="canvas-wrap">
-      <svg class="cg-svg" id="svg-flowchart" xmlns="http://www.w3.org/2000/svg" style="display:none"></svg>
-      <svg class="cg-svg" id="svg-sequence" xmlns="http://www.w3.org/2000/svg" style="display:none"></svg>
-      <div id="loading">Loading graph…</div>
+    <div id="main">
+      <div id="canvas-wrap">
+        <svg class="cg-svg" id="svg-flowchart" xmlns="http://www.w3.org/2000/svg" style="display:none"></svg>
+        <svg class="cg-svg" id="svg-sequence" xmlns="http://www.w3.org/2000/svg" style="display:none"></svg>
+        <div id="loading">Loading graph…</div>
+      </div>
+      <div id="splitter" title="Drag to resize · Double-click to reset"></div>
+      <div id="code-pane">
+        <div id="code-pane-header">(no file)</div>
+        <div id="code-pane-body"><pre><code id="code-pane-code"></code></pre></div>
+      </div>
     </div>
 
     <footer>
@@ -41,6 +48,7 @@ __CSS__
 
   <script id="cg-data" type="application/json">__DATA__</script>
   <script>__DAGRE__</script>
+  <script>__HIGHLIGHT__</script>
   <script>__RENDER__</script>
 </body>
 </html>

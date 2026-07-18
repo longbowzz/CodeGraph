@@ -23,6 +23,9 @@
     'rider':            { label: 'Rider',            url: (p, l) => `rider://open?file=${encodeURIComponent(p)}&line=${l}` },
     'clion':            { label: 'CLion',            url: (p, l) => `clion://open?file=${encodeURIComponent(p)}&line=${l}` },
     'rubymine':         { label: 'RubyMine',         url: (p, l) => `rubymine://open?file=${encodeURIComponent(p)}&line=${l}` },
+    // `web` opens source in an in-page code pane (right side of the canvas).
+    // No URL scheme — clicking a node routes through showCodeInPane() below.
+    'web':              { label: 'Web',              inPage: true },
   };
 
   // ---- Safari detection (for banner) ----
@@ -44,7 +47,15 @@
   editorSel.addEventListener('change', () => {
     currentEditor = editorSel.value;
     localStorage.setItem('cg-editor', currentEditor);
+    applyWebMode();
   });
+
+  // Toggle the in-page code pane on/off based on current editor.
+  function applyWebMode() {
+    const on = editors[currentEditor]?.inPage === true;
+    document.body.classList.toggle('cg-web-mode', on);
+  }
+  applyWebMode();
 
   // ---- Topic / header ----
   document.getElementById('topic').textContent = data.topic || '(untitled)';
@@ -63,6 +74,10 @@
     const file = Array.isArray(loc) ? loc[0] : loc.file;
     const line = Array.isArray(loc) ? loc[1] : loc.line;
     if (!file || !line) return;
+    if (editors[currentEditor].inPage) {
+      showCodeInPane(file, line);
+      return;
+    }
     const p = absPath(file);
     const url = editors[currentEditor].url(p, line);
     // Test hook: expose last URL for headless verification (no navigation in tests).
@@ -621,4 +636,147 @@
 
   // Hide loading state
   document.getElementById('loading').style.display = 'none';
+
+  // ============================================================
+  // WEB MODE: in-page code pane + splitter
+  // ============================================================
+  // File-extension → highlight.js language id. Falls back to auto-detect.
+  const EXT_LANG = {
+    '.ts': 'typescript', '.tsx': 'typescript',
+    '.js': 'javascript', '.jsx': 'javascript', '.mjs': 'javascript', '.cjs': 'javascript',
+    '.py': 'python',
+    '.go': 'go',
+    '.rs': 'rust',
+    '.java': 'java',
+    '.c': 'c', '.h': 'c',
+    '.cpp': 'cpp', '.cc': 'cpp', '.cxx': 'cpp', '.hpp': 'cpp',
+    '.css': 'css',
+    '.html': 'xml', '.htm': 'xml', '.svg': 'xml',
+    '.json': 'json',
+    '.md': 'markdown', '.markdown': 'markdown',
+    '.sh': 'bash', '.bash': 'bash',
+    '.yml': 'yaml', '.yaml': 'yaml',
+    '.sql': 'sql',
+  };
+
+  function langForFile(file) {
+    const lower = file.toLowerCase();
+    // Match the longest extension so '.tsx' wins over '.x'.
+    let best = null;
+    for (const ext of Object.keys(EXT_LANG)) {
+      if (lower.endsWith(ext) && (best === null || ext.length > best.length)) best = ext;
+    }
+    return best ? EXT_LANG[best] : null;
+  }
+
+  function showCodeInPane(file, line) {
+    const pane = document.getElementById('code-pane');
+    const header = document.getElementById('code-pane-header');
+    const body = document.getElementById('code-pane-body');
+    const files = data.files || {};
+    // Always make sure the pane is visible (it is via CSS when web mode is on,
+    // but be explicit in case of class drift).
+    pane.style.display = '';
+
+    function setHeader(text) {
+      header.textContent = text;
+    }
+
+    if (!files[file]) {
+      setHeader(file);
+      body.innerHTML = `<div id="code-pane-empty">File not embedded: <code>${file}</code></div>`;
+      return;
+    }
+
+    const text = files[file];
+    // Highlight the whole file in one pass, then split the resulting HTML by
+    // line — one parse is much cheaper than N per-line parses.
+    const lang = langForFile(file);
+    let html;
+    try {
+      html = lang
+        ? window.hljs.highlight(text, { language: lang }).value
+        : window.hljs.highlightAuto(text).value;
+    } catch {
+      // Defensive: if hljs is missing/broken, show plain text.
+      html = text.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+    }
+    const lines = html.split('\n');
+    const total = lines.length;
+    setHeader(`${file} · line ${line} / ${total}`);
+
+    // Build one <div class="cg-code-line"> per line with a line-number gutter.
+    const frag = document.createDocumentFragment();
+    lines.forEach((lineHtml, i) => {
+      const n = i + 1;
+      const row = document.createElement('div');
+      row.className = 'cg-code-line';
+      row.dataset.line = n;
+      if (n === line) row.classList.add('cg-current-line');
+      const num = document.createElement('span');
+      num.className = 'cg-line-num';
+      num.textContent = n;
+      const content = document.createElement('span');
+      content.className = 'cg-line-content';
+      // innerHTML is safe here: lineHtml came from hljs's escaped output.
+      content.innerHTML = lineHtml || ' ';
+      row.appendChild(num);
+      row.appendChild(content);
+      frag.appendChild(row);
+    });
+    body.innerHTML = '';
+    body.appendChild(frag);
+
+    // Scroll target line into view (centered). rAF avoids a stale scroll
+    // calculation if the browser hasn't flushed layout yet.
+    requestAnimationFrame(() => {
+      const target = body.querySelector('.cg-current-line');
+      if (target) target.scrollIntoView({ block: 'center' });
+    });
+  }
+
+  // ---- Splitter drag + dblclick reset ----
+  (function wireSplitter() {
+    const splitter = document.getElementById('splitter');
+    const canvasWrap = document.getElementById('canvas-wrap');
+    const codePane = document.getElementById('code-pane');
+    if (!splitter) return;
+    const MIN = 200;
+
+    function setRatio(canvasPx) {
+      const main = document.getElementById('main');
+      const total = main.clientWidth;
+      const clamped = Math.max(MIN, Math.min(total - MIN - splitter.offsetWidth, canvasPx));
+      canvasWrap.style.flex = `0 0 ${clamped}px`;
+      codePane.style.flex = '1 1 auto';
+    }
+
+    splitter.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      splitter.classList.add('cg-dragging');
+      const main = document.getElementById('main');
+      const total = main.clientWidth;
+      const startX = e.clientX;
+      const startCanvasWidth = canvasWrap.getBoundingClientRect().width;
+      const onMove = (ev) => {
+        const dx = ev.clientX - startX;
+        setRatio(startCanvasWidth + dx);
+      };
+      const onUp = () => {
+        splitter.classList.remove('cg-dragging');
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        window.dispatchEvent(new Event('resize'));
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    // Double-click resets to default 1:2 (canvas:code).
+    splitter.addEventListener('dblclick', () => {
+      canvasWrap.style.flex = '1 1 auto';
+      codePane.style.flex = '2 1 auto';
+      window.dispatchEvent(new Event('resize'));
+    });
+  })();
 })();
