@@ -9,7 +9,7 @@
 //
 // Outputs single self-contained HTML at --out.
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
@@ -180,7 +180,16 @@ const highlightJs = editor.id === 'web'
 // any of the other placeholder literals — replacing those after the data
 // would corrupt the JSON. Doing data last means earlier replaces only see
 // the real template placeholders.
-const dataJson = JSON.stringify(dataBlob);
+//
+// The data JSON is embedded inside <script id="cg-data" type="application/json">.
+// HTML parsing of script-data treats literal `</script>` (and a few related
+// sequences like `<!--` / `<script`) as block terminators regardless of the
+// `type` attribute — JSON-escaped source files containing those bytes would
+// silently truncate the block. Escape `<`, `>`, `&` as \u003c / \u003e / \u0026
+// so the HTML parser can never see them; JSON.parse reverses all three
+// transparently.
+const dataJson = JSON.stringify(dataBlob)
+  .replace(/[<&>]/g, c => ({ '<': '\\u003c', '>': '\\u003e', '&': '\\u0026' }[c]));
 const out = pageHtml
   .replace('__CSS__', stylesCss)
   .replace(/__TOPIC__/g, escapeHtml(topicSlug))
@@ -192,6 +201,24 @@ const out = pageHtml
 // 9. Write
 mkdirSync(dirname(args.out), { recursive: true });
 writeFileSync(args.out, out);
+
+// 10. Verify: parse the just-written HTML to confirm the cg-data JSON and
+// every inline <script> are syntactically valid. If anything is wrong, drop
+// the corrupt output and exit non-zero so callers (and CI) can detect it.
+const verifyPath = resolve(__dirname, 'verify-html.mjs');
+const { verifyHtml } = await import(verifyPath);
+const vr = verifyHtml(args.out);
+for (const s of vr.summaries) console.log(s);
+if (!vr.ok) {
+  console.error(`\nverify-html: ${vr.failures.length} failure(s):`);
+  for (const f of vr.failures) {
+    console.error(`  ✗ ${f.block}`);
+    console.error(`      ${f.msg}`);
+  }
+  try { unlinkSync(args.out); } catch {}
+  console.error(`\nBuild failed verification; removed ${args.out}.`);
+  process.exit(1);
+}
 
 console.log(`Wrote ${args.out} (${(out.length / 1024).toFixed(1)} KB)`);
 
