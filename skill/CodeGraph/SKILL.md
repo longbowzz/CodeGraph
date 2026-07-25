@@ -70,6 +70,7 @@ Trigger this skill when the user's message:
   - "时序图" / "sequence diagram"
   - "调用流程" / "call flow"
   - "流程" / "flow"
+  - "PR" / "commit" / "diff" / "review" / "改动" / "变更" / "评审"
 - OR explicitly says "use CodeGraph" / "用 CodeGraph 技能".
 
 Do **not** trigger on generic "explain the code" or "draw me a diagram" requests.
@@ -155,7 +156,75 @@ Report:
 
 ---
 
-## 3. Mermaid Subset Contract
+## 3. Review Mode
+
+Review mode produces a diff-aware diagram from a PR, single commit, `base..head`
+ref range, or the working tree. Every node / edge / actor / message is colored
+by diff status:
+
+| Status | Color | Visual |
+|---|---|---|
+| added | green | solid fill |
+| modified | orange | solid fill |
+| removed | red | dashed fill + border |
+| unchanged | default | unchanged |
+
+### Trigger
+
+Same as §1, plus any of these keywords: `PR`, `commit`, `diff`, `review`,
+`改动`, `变更`, `评审`.
+
+### Workflow
+
+1. **Resolve diff source**:
+   - PR number: `node <SKILL_DIR>/scripts/diff-status.mjs --repo <repo> --base pr/<num> --head pr/<num>` (uses `gh pr view`).
+   - Single commit: base = `<sha>~1`, head = `<sha>`.
+   - Working tree: base = `HEAD`, head = `WORKTREE`.
+   - Ref range: pass `--base <ref>` and `--head <ref>` directly.
+2. **Run `diff-status.mjs`**: get `addedLines` / `removedLines` per file.
+3. **Read code** (primarily the new version) and produce topology manually.
+   Attribute status with the diff table:
+   - Node loc line ∈ `addedLines` → `"added"`.
+   - Node loc line ∈ `removedLines` → `"removed"`.
+   - File is `modified` but the exact line isn't in either set, and the node's
+     semantics clearly changed → `"modified"`.
+   - Otherwise → `"unchanged"`.
+4. **Write `graph.mmd`**: include diff-touched nodes **plus surrounding context**
+   (caller chain, callers of callers, related branches). Merge adjacent trivial
+   steps. Don't render line-by-line.
+5. **Write `graph.locs.json`**: use 3-element entries `[file, line, status]`.
+6. **Validate** with `validate.mjs` (extended for review mode).
+7. **Build** with `--diff-base` and `--diff-head` so the legend and colors render:
+
+   ```bash
+   node <SKILL_DIR>/scripts/build-html.mjs \
+     --mmd <output>/graph.mmd \
+     --locs <output>/graph.locs.json \
+     --repo <repo-root> \
+     --out <output>/graph.html \
+     --editor-config <repo>/.codegraph/config.json \
+     --diff-base <base> \
+     --diff-head <head>
+   ```
+
+8. **Report** the output path; mention it's a review-mode diagram.
+
+### Removed-node rule
+
+Removed nodes **must** appear in `graph.mmd` and carry `"removed"` status. Their
+loc should point at the closest still-existing file and line (best guess for
+"where it used to be"); if the file is gone, point at the most related existing
+file. This keeps click-to-jump useful.
+
+### Simplification rule
+
+A diagram with 30 nodes where 5 are touched is better than a diagram with only
+those 5 nodes. The reviewer needs the surrounding context to understand where
+the change fits.
+
+---
+
+## 4. Mermaid Subset Contract
 
 **You are restricted to this subset.** Anything outside it will be rejected by
 the validator. The subset is intentionally minimal.
@@ -355,21 +424,33 @@ in the ALLOWED tables above is rejected):
 
 ## 4. `graph.locs.json` Format
 
-A flat JSON file mapping element identifiers to `[relativeFilePath, lineNumber]`.
+A flat JSON file mapping element identifiers to `[relativeFilePath, lineNumber]`
+or `[relativeFilePath, lineNumber, diffStatus]`.
+
+The optional third element `diffStatus` is used in **review mode** (§3). It must
+be one of:
+
+- `"added"` — new in this diff.
+- `"modified"` — changed in this diff.
+- `"removed"` — deleted in this diff.
+- `"unchanged"` — not touched by this diff (same as omitting the third element).
+
+When the third element is omitted, the element is treated as `"unchanged"`.
 
 ### 4.1 For flowchart
 
 ```json
 {
   "A": ["src/handler.ts", 12],
-  "B": ["src/handler.ts", 20],
-  "C": ["src/handler.ts", 35]
+  "B": ["src/handler.ts", 20, "modified"],
+  "C": ["src/handler.ts", 35, "added"]
 }
 ```
 
-Keys = node IDs from `graph.mmd`. Values = 2-element arrays:
+Keys = node IDs from `graph.mmd`. Values = 2- or 3-element arrays:
 1. File path **relative to repo root**. Use `/` as separator. No `./` prefix.
 2. Line number (1-based positive integer).
+3. (optional) Diff status: `"added"`, `"modified"`, `"removed"`, or `"unchanged"`.
 
 ### 4.2 For sequence
 
@@ -377,12 +458,12 @@ Keys = node IDs from `graph.mmd`. Values = 2-element arrays:
 {
   "actors": {
     "C": ["src/client.ts", 1],
-    "S": ["src/server.ts", 30],
+    "S": ["src/server.ts", 30, "removed"],
     "A": ["src/auth.ts", 1]
   },
   "messages": [
     ["src/server.ts", 35],
-    ["src/auth.ts", 12],
+    ["src/auth.ts", 12, "modified"],
     ["src/auth.ts", 25],
     ["src/server.ts", 50]
   ]
@@ -391,8 +472,9 @@ Keys = node IDs from `graph.mmd`. Values = 2-element arrays:
 
 - `actors` keys = participant IDs from `sequenceDiagram`.
 - `messages` is a **flat array in the order messages appear in `graph.mmd`**.
-  Each entry = `[file, line]`. The array length MUST equal the number of
-  message arrows in `graph.mmd`. Notes and control-block headers do not count.
+  Each entry = `[file, line]` or `[file, line, status]`. The array length MUST
+  equal the number of message arrows in `graph.mmd`. Notes and control-block
+  headers do not count.
 
 ---
 

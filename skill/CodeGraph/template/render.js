@@ -183,6 +183,19 @@
     return d;
   }
 
+  // Review-mode: infer an edge's diff status from its endpoint nodes.
+  // Priority: added > removed > modified > unchanged. Returns undefined if
+  // neither endpoint carries a diff status (non-review build).
+  function inferEdgeDiff(a, b) {
+    const order = { added: 4, removed: 3, modified: 2, unchanged: 1 };
+    const ax = a && order[a.diff] ? a.diff : null;
+    const bx = b && order[b.diff] ? b.diff : null;
+    if (!ax && !bx) return null;
+    const aRank = ax ? order[ax] : 0;
+    const bRank = bx ? order[bx] : 0;
+    return aRank >= bRank ? ax : bx;
+  }
+
   function renderFlowchart(svg, fc) {
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: fc.direction === 'LR' ? 'LR' : 'TB', nodesep: 50, ranksep: 70, marginx: 20, marginy: 20 });
@@ -196,7 +209,7 @@
       const widest = Math.max(...lines.map(s => estimateTextWidth(s)));
       const w = Math.max(120, widest + 40);     // 20px padding each side
       const h = Math.max(44, lines.length * 20 + 20); // 10px padding top/bottom
-      g.setNode(n.id, { width: w, height: h, _meta: { ...n, location: loc } });
+      g.setNode(n.id, { width: w, height: h, _meta: { ...n, location: loc, diff: loc && loc[2] } });
     }
     for (const e of fc.edges) {
       g.setEdge(e.from, e.to, { _meta: e });
@@ -244,6 +257,8 @@
       grp.setAttribute('class', 'cg-edge' + (meta.style === 'dashed' ? ' cg-dashed' : ''));
       grp.setAttribute('data-from', e.v);
       grp.setAttribute('data-to', e.w);
+      const edgeDiff = inferEdgeDiff(g.node(e.v)?._meta, g.node(e.w)?._meta);
+      if (edgeDiff) grp.setAttribute('data-diff', edgeDiff);
       // Snap endpoints to fixed anchors on the node boundary:
       //   rect/terminal/storage → midpoint of the nearest side
       //   decision (diamond)    → nearest vertex
@@ -285,6 +300,7 @@
       grp.setAttribute('data-id', id);
       grp.setAttribute('data-shape', meta.shape || 'normal');
       grp.setAttribute('data-loc', meta.location ? 'true' : 'false');
+      if (meta.diff) grp.setAttribute('data-diff', meta.diff);
       const cx = nd.x, cy = nd.y, w = nd.width, h = nd.height;
       const x = cx - w / 2, y = cy - h / 2;
       const shape = meta.shape || 'normal';
@@ -376,10 +392,12 @@
     // Actors (top headers)
     sq.actors.forEach(a => {
       const x = actorX.get(a.id);
+      const aLoc = sq.locs?.actors?.[a.id];
       const grp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       grp.setAttribute('class', 'cg-actor');
       grp.setAttribute('data-id', a.id);
-      grp.setAttribute('data-loc', sq.locs?.actors?.[a.id] ? 'true' : 'false');
+      grp.setAttribute('data-loc', aLoc ? 'true' : 'false');
+      if (aLoc && aLoc[2]) grp.setAttribute('data-diff', aLoc[2]);
       const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
       r.setAttribute('x', x - ACTOR_W / 2); r.setAttribute('y', PADTOP - ACTOR_H - 12);
       r.setAttribute('width', ACTOR_W); r.setAttribute('height', ACTOR_H);
@@ -410,13 +428,15 @@
       const fromX = actorX.get(m.from);
       const toX = actorX.get(m.to);
       const isSelf = m.from === m.to;
+      const mLoc = sq.locs?.messages?.[i];
       const grp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       let cls = 'cg-msg';
       if (m.style === 'return') cls += ' cg-return';
       if (m.style === 'async') cls += ' cg-async';
       grp.setAttribute('class', cls);
       grp.setAttribute('data-idx', i);
-      grp.setAttribute('data-loc', sq.locs?.messages?.[i] ? 'true' : 'false');
+      grp.setAttribute('data-loc', mLoc ? 'true' : 'false');
+      if (mLoc && mLoc[2]) grp.setAttribute('data-diff', mLoc[2]);
 
       if (isSelf) {
         const loop = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -480,6 +500,34 @@
     };
   }
 
+  // Review-mode diff legend. Renders inside #cg-diff-legend only when
+  // data.review is present. Shows four color swatches: added, modified,
+  // removed, unchanged.
+  function renderLegend() {
+    if (!data.review) return;
+    const el = document.getElementById('cg-diff-legend');
+    if (!el) return;
+    const items = [
+      { status: 'added', label: 'added' },
+      { status: 'modified', label: 'modified' },
+      { status: 'removed', label: 'removed' },
+      { status: 'unchanged', label: 'unchanged' },
+    ];
+    for (const { status, label } of items) {
+      const row = document.createElement('div');
+      row.className = 'cg-legend-item';
+      const swatch = document.createElement('span');
+      swatch.className = `cg-legend-swatch cg-legend-${status}`;
+      const txt = document.createElement('span');
+      txt.className = 'cg-legend-label';
+      txt.textContent = label;
+      row.appendChild(swatch);
+      row.appendChild(txt);
+      el.appendChild(row);
+    }
+    el.classList.add('visible');
+  }
+
   // ============================================================
   // WIRE UP TABS & CANVAS
   // ============================================================
@@ -515,6 +563,8 @@
     sqTab.classList.add('hidden');
     sqSvg.style.display = 'none';
   }
+
+  renderLegend();
 
   function fitTransform(bbox) {
     const wrap = document.getElementById('canvas-wrap');

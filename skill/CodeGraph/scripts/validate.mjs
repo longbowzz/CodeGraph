@@ -39,16 +39,20 @@ function parseArgs(argv) {
 }
 
 const errors = [];
+const warnings = [];
 function err(code, path, message, fix_hint) {
   errors.push({ level: 'error', code, path, message, fix_hint });
 }
+function warn(code, path, message, fix_hint) {
+  warnings.push({ level: 'warning', code, path, message, fix_hint });
+}
 
 function ok() {
-  console.log(JSON.stringify({ ok: true }));
+  console.log(JSON.stringify({ ok: true, warnings }));
   process.exit(0);
 }
 function fail() {
-  console.log(JSON.stringify({ ok: false, errors }, null, 2));
+  console.log(JSON.stringify({ ok: false, errors, warnings }, null, 2));
   process.exit(1);
 }
 
@@ -145,14 +149,15 @@ if (parsed.flowchart && parsed.sequence) {
 }
 
 // ---------- 3. Validate locs structure ----------
+const DIFF_STATUSES = new Set(['added', 'modified', 'removed', 'unchanged']);
 function validateEntry(entry, keyPath) {
-  if (!Array.isArray(entry) || entry.length !== 2) {
+  if (!Array.isArray(entry) || entry.length < 2 || entry.length > 3) {
     err('LOCS_ENTRY_SHAPE', `${args.locs}:${keyPath}`,
-      `entry must be a 2-element [file, line] array, got ${JSON.stringify(entry)}`,
-      `Use ["relative/path", <lineNumber>].`);
+      `entry must be a 2- or 3-element [file, line(, status)] array, got ${JSON.stringify(entry)}`,
+      `Use ["relative/path", <lineNumber>] or ["relative/path", <lineNumber>, "added|modified|removed|unchanged"].`);
     return null;
   }
-  const [file, line] = entry;
+  const [file, line, status] = entry;
   if (typeof file !== 'string' || file.length === 0) {
     err('LOCS_ENTRY_SHAPE', `${args.locs}:${keyPath}`,
       `file path must be a non-empty string, got ${JSON.stringify(file)}`,
@@ -169,6 +174,12 @@ function validateEntry(entry, keyPath) {
     err('LOCS_ENTRY_SHAPE', `${args.locs}:${keyPath}`,
       `line number must be a positive integer, got ${JSON.stringify(line)}`,
       `Use a 1-based line number.`);
+    return null;
+  }
+  if (status !== undefined && !DIFF_STATUSES.has(status)) {
+    err('LOCS_DIFF_STATUS_INVALID', `${args.locs}:${keyPath}`,
+      `diff status must be one of added|modified|removed|unchanged, got ${JSON.stringify(status)}`,
+      `Drop the third element, or use one of: "added", "modified", "removed", "unchanged".`);
     return null;
   }
   return entry;
@@ -239,12 +250,22 @@ if (parsed.sequence) {
 }
 
 // ---------- 5. Path existence ----------
-for (const [key, [file, line], kind] of checkedEntries) {
+for (const [key, entry, kind] of checkedEntries) {
+  const [file, line, status] = entry;
   const abs = join(repoAbs, file);
   if (!existsSync(abs)) {
-    err('PATH_NOT_FOUND', `${args.locs}:${key}`,
-      `file does not exist under repo root: ${file} (looked at ${abs})`,
-      `Fix the path. Must be relative to repo root. Verify with: ls ${relative(process.cwd(), abs) || abs}`);
+    if (status === 'removed') {
+      // Removed nodes may point at files that no longer exist (the file was
+      // deleted in the diff). Emit a warning so the build proceeds but the
+      // report is visible.
+      warn('PATH_NOT_FOUND', `${args.locs}:${key}`,
+        `file does not exist under repo root (acceptable for status='removed'): ${file}`,
+        `Optionally repoint the loc at the closest still-existing file to keep click-to-jump useful.`);
+    } else {
+      err('PATH_NOT_FOUND', `${args.locs}:${key}`,
+        `file does not exist under repo root: ${file} (looked at ${abs})`,
+        `Fix the path. Must be relative to repo root. Verify with: ls ${relative(process.cwd(), abs) || abs}`);
+    }
   }
 }
 

@@ -28,8 +28,10 @@ function parseArgs(argv) {
     else if (k === '--repo') a.repo = argv[++i];
     else if (k === '--out') a.out = argv[++i];
     else if (k === '--editor-config') a.editorConfig = argv[++i];
+    else if (k === '--diff-base') a.diffBase = argv[++i];
+    else if (k === '--diff-head') a.diffHead = argv[++i];
     else if (k === '-h' || k === '--help') {
-      console.error('Usage: build-html.mjs --mmd <p> --locs <p> --repo <p> --out <p> --editor-config <p>');
+      console.error('Usage: build-html.mjs --mmd <p> --locs <p> --repo <p> --out <p> --editor-config <p> [--diff-base <ref> --diff-head <ref>]');
       process.exit(2);
     } else {
       console.error(`Unknown arg: ${k}`);
@@ -128,51 +130,60 @@ const dataBlob = {
   sequence: merged.sequence || null,
 };
 
-// 6a. For `web` editor, embed every referenced source file so the in-page
-// code pane can display them without a server. Unreadable files are skipped
-// with a stderr warning (build continues).
-if (editor.id === 'web') {
-  const paths = new Set();
-  if (merged.flowchart?.locs) {
-    for (const v of Object.values(merged.flowchart.locs)) {
-      if (Array.isArray(v) && v[0]) paths.add(v[0]);
-    }
-  }
-  if (merged.sequence?.locs) {
-    const actors = merged.sequence.locs.actors || {};
-    for (const v of Object.values(actors)) {
-      if (Array.isArray(v) && v[0]) paths.add(v[0]);
-    }
-    const messages = merged.sequence.locs.messages || [];
-    for (const v of messages) {
-      if (Array.isArray(v) && v[0]) paths.add(v[0]);
-    }
-  }
-  const files = {};
-  for (const rel of paths) {
-    const abs = resolve(repoAbs, rel);
-    try {
-      if (!existsSync(abs)) {
-        console.error(`[web] skip missing: ${rel}`);
-        continue;
-      }
-      files[rel] = readFileSync(abs, 'utf8');
-    } catch (e) {
-      console.error(`[web] skip unreadable ${rel}: ${e.message}`);
-    }
-  }
-  dataBlob.files = files;
+// 6a. Review mode: when --diff-base and --diff-head are both provided,
+// attach a review descriptor. The renderer uses its presence to show the
+// diff legend and rely on the per-loc 3rd element for color attribution.
+if (args.diffBase && args.diffHead) {
+  dataBlob.review = {
+    base: args.diffBase,
+    head: args.diffHead,
+    range: `${args.diffBase}..${args.diffHead}`,
+  };
 }
+
+// 6b. Embed every referenced source file so the in-page code pane works
+// whenever the user switches to the `web` editor. Unreadable files are skipped
+// with a stderr warning (build continues). This makes editor selection a
+// runtime display preference rather than a build-time decision.
+const paths = new Set();
+if (merged.flowchart?.locs) {
+  for (const v of Object.values(merged.flowchart.locs)) {
+    if (Array.isArray(v) && v[0]) paths.add(v[0]);
+  }
+}
+if (merged.sequence?.locs) {
+  const actors = merged.sequence.locs.actors || {};
+  for (const v of Object.values(actors)) {
+    if (Array.isArray(v) && v[0]) paths.add(v[0]);
+  }
+  const messages = merged.sequence.locs.messages || [];
+  for (const v of messages) {
+    if (Array.isArray(v) && v[0]) paths.add(v[0]);
+  }
+}
+const files = {};
+for (const rel of paths) {
+  const abs = resolve(repoAbs, rel);
+  try {
+    if (!existsSync(abs)) {
+      console.error(`[web] skip missing: ${rel}`);
+      continue;
+    }
+    files[rel] = readFileSync(abs, 'utf8');
+  } catch (e) {
+    console.error(`[web] skip unreadable ${rel}: ${e.message}`);
+  }
+}
+dataBlob.files = files;
 
 // 7. Read template parts
 const pageHtml = readFileSync(resolve(TEMPLATE_DIR, 'page.html'), 'utf8');
 const renderJs = readFileSync(resolve(TEMPLATE_DIR, 'render.js'), 'utf8');
 const stylesCss = readFileSync(resolve(TEMPLATE_DIR, 'styles.css'), 'utf8');
 const dagreJs = readFileSync(resolve(VENDOR_DIR, 'dagre.min.js'), 'utf8');
-// highlight.js is only inlined for the `web` editor (keeps other builds small).
-const highlightJs = editor.id === 'web'
-  ? readFileSync(resolve(VENDOR_DIR, 'highlight.min.js'), 'utf8')
-  : '';
+// highlight.js is required for the in-page code pane; keep it inlined so the
+// HTML stays single-file and the web editor works regardless of default editor.
+const highlightJs = readFileSync(resolve(VENDOR_DIR, 'highlight.min.js'), 'utf8');
 
 // 8. Inline. Use a sentinel unlikely to appear in data.
 // IMPORTANT: __DATA__ must be substituted LAST. The data blob may contain

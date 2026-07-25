@@ -14,6 +14,8 @@ Turn a request like *"use CodeGraph to draw the login flow as a flowchart"* into
 - A validator checks syntax, ID alignment, and path existence.
 - A builder inlines everything (vendored dagre + renderer + your data) into one HTML file with zoom / pan / hover / click-to-jump.
 
+**Review mode**: give the agent a PR, commit, or `base..head` range and it highlights added / modified / removed nodes and edges so reviewers see the change in context.
+
 The HTML has **zero runtime dependencies** — no server, no CDN, no `npm install` on the viewer's machine.
 
 ### Example output

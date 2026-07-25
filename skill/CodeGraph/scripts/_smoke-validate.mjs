@@ -25,7 +25,7 @@ import { dirname } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const validatePath = join(here, 'validate.mjs');
 
-function runExpect(args, expectOk, name) {
+function runExpect(args, expectOk, name, expectCode) {
   const mmd = join(outDir, 'graph.mmd');
   const locs = join(outDir, 'graph.locs.json');
   writeFileSync(mmd, args.mmd);
@@ -43,6 +43,14 @@ function runExpect(args, expectOk, name) {
   const parsed = JSON.parse(stdout);
   const actualOk = parsed.ok === true;
   if (actualOk === expectOk) {
+    if (expectCode) {
+      const firstErr = parsed.errors?.[0]?.code;
+      if (firstErr !== expectCode) {
+        console.log(`FAIL  ${name} — expected code ${expectCode}, got ${firstErr}`);
+        console.log('       ' + JSON.stringify(parsed.errors || parsed).slice(0, 300));
+        return false;
+      }
+    }
     console.log(`PASS  ${name}${actualOk ? '' : ' (rejected: ' + (parsed.errors?.[0]?.code || '?') + ')'}`);
     return true;
   } else {
@@ -182,10 +190,57 @@ B-->>A: result`,
     },
     expectOk: true,
   },
+  // Review mode: 3-element entries
+  {
+    name: 'review mode statuses',
+    mmd: `flowchart TD
+A[新增节点] --> B[修改节点]
+B --> C[未改节点]
+C --> D[删除节点]`,
+    locs: {
+      A: ['src/handler.ts', 10, 'added'],
+      B: ['src/handler.ts', 20, 'modified'],
+      C: ['src/handler.ts', 30],
+      D: ['src/auth.ts', 5, 'removed'],
+    },
+    expectOk: true,
+  },
+  // Review mode: sequence 3-element entries
+  {
+    name: 'review sequence statuses',
+    mmd: `sequenceDiagram
+participant A as Client
+participant B as Server
+A->>B: call
+B-->>A: result`,
+    locs: {
+      actors: { A: ['src/client.ts', 1, 'added'], B: ['src/server.ts', 30] },
+      messages: [
+        ['src/server.ts', 35, 'modified'],
+        ['src/server.ts', 50, 'removed'],
+      ],
+    },
+    expectOk: true,
+  },
+  // Should fail: invalid diff status
+  {
+    name: 'invalid diff status',
+    mmd: `flowchart TD\nA[x]`,
+    locs: { A: ['src/handler.ts', 1, 'touched'] },
+    expectOk: false,
+    expectCode: 'LOCS_DIFF_STATUS_INVALID',
+  },
+  // Removed node with missing file should warn but pass
+  {
+    name: 'removed missing file warns',
+    mmd: `flowchart TD\nA[x]`,
+    locs: { A: ['src/deleted.ts', 5, 'removed'] },
+    expectOk: true,
+  },
 ];
 
 for (const c of cases) {
-  if (runExpect(c, c.expectOk, c.name)) pass++; else fail++;
+  if (runExpect(c, c.expectOk, c.name, c.expectCode)) pass++; else fail++;
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

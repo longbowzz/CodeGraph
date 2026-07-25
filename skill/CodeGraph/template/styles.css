@@ -17,6 +17,12 @@
   --highlight: #ffeb3b;
   --safari-warn-bg: #fff8e1;
   --safari-warn-border: #d9a400;
+  --diff-added-fill: #d4f4d4;
+  --diff-added-stroke: #2e8b2e;
+  --diff-modified-fill: #ffe0b3;
+  --diff-modified-stroke: #cc6600;
+  --diff-removed-fill: #fbd5d5;
+  --diff-removed-stroke: #b31d28;
 }
 
 * { box-sizing: border-box; }
@@ -199,6 +205,77 @@ svg.cg-svg { width: 100%; height: 100%; display: block; user-select: none; }
 
 .cg-note rect { fill: #fff9c4; stroke: #d9a400; stroke-width: 1; }
 .cg-note text { font-size: 11px; fill: #555; }
+
+/* ---- Diff attribution (review mode) ---- */
+/* Nodes */
+.cg-node[data-diff="added"] rect,
+.cg-node[data-diff="added"] polygon,
+.cg-node[data-diff="added"] circle,
+.cg-node[data-diff="added"] path {
+  fill: var(--diff-added-fill) !important;
+  stroke: var(--diff-added-stroke) !important;
+}
+.cg-node[data-diff="modified"] rect,
+.cg-node[data-diff="modified"] polygon,
+.cg-node[data-diff="modified"] circle,
+.cg-node[data-diff="modified"] path {
+  fill: var(--diff-modified-fill) !important;
+  stroke: var(--diff-modified-stroke) !important;
+}
+.cg-node[data-diff="removed"] rect,
+.cg-node[data-diff="removed"] polygon,
+.cg-node[data-diff="removed"] circle,
+.cg-node[data-diff="removed"] path {
+  fill: var(--diff-removed-fill) !important;
+  stroke: var(--diff-removed-stroke) !important;
+  stroke-dasharray: 5 3;
+}
+
+/* Edges */
+.cg-edge[data-diff="added"] path { stroke: var(--diff-added-stroke) !important; }
+.cg-edge[data-diff="modified"] path { stroke: var(--diff-modified-stroke) !important; }
+.cg-edge[data-diff="removed"] path { stroke: var(--diff-removed-stroke) !important; stroke-dasharray: 5 3; }
+
+/* Sequence actors */
+.cg-actor[data-diff="added"] rect { fill: var(--diff-added-fill) !important; stroke: var(--diff-added-stroke) !important; }
+.cg-actor[data-diff="modified"] rect { fill: var(--diff-modified-fill) !important; stroke: var(--diff-modified-stroke) !important; }
+.cg-actor[data-diff="removed"] rect { fill: var(--diff-removed-fill) !important; stroke: var(--diff-removed-stroke) !important; stroke-dasharray: 5 3; }
+
+/* Sequence messages */
+.cg-msg[data-diff="added"] path { stroke: var(--diff-added-stroke) !important; }
+.cg-msg[data-diff="modified"] path { stroke: var(--diff-modified-stroke) !important; }
+.cg-msg[data-diff="removed"] path { stroke: var(--diff-removed-stroke) !important; stroke-dasharray: 5 3; }
+.cg-msg[data-diff="added"] text { fill: var(--diff-added-stroke) !important; }
+.cg-msg[data-diff="modified"] text { fill: var(--diff-modified-stroke) !important; }
+.cg-msg[data-diff="removed"] text { fill: var(--diff-removed-stroke) !important; }
+
+/* Diff legend (review mode only) */
+#cg-diff-legend {
+  display: none;
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  background: rgba(255,255,255,0.96);
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px 12px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+  font-size: 12px;
+  gap: 10px;
+  flex-direction: row;
+}
+#cg-diff-legend.visible { display: flex; }
+.cg-legend-item { display: flex; align-items: center; gap: 5px; }
+.cg-legend-swatch {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid transparent;
+  border-radius: 3px;
+}
+.cg-legend-added    { background: var(--diff-added-fill);    border-color: var(--diff-added-stroke); }
+.cg-legend-modified { background: var(--diff-modified-fill); border-color: var(--diff-modified-stroke); }
+.cg-legend-removed  { background: var(--diff-removed-fill);  border-color: var(--diff-removed-stroke); stroke-dasharray: 2 2; }
+.cg-legend-unchanged { background: var(--node-fill); border-color: var(--node-stroke); }
 
 .cg-block rect { fill: rgba(43,124,255,0.05); stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 2; }
 .cg-block text { font-size: 11px; fill: var(--accent); font-weight: 600; }

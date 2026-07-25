@@ -29,6 +29,14 @@ with sync_playwright() as p:
     # Check dagre global defined
     dagre_defined = page.evaluate("typeof dagre !== 'undefined'")
 
+    # Review-mode checks (only when data.review is present)
+    has_review = page.evaluate('''
+        const data = JSON.parse(document.getElementById('cg-data').textContent);
+        !!data.review;
+    ''')
+    legend_visible = page.eval_on_selector("#cg-diff-legend", "el => el && el.classList.contains('visible')")
+    diff_nodes = page.eval_on_selector_all('[data-diff]', 'els => els.length')
+
     print(f"dagre defined: {dagre_defined}")
     print(f"#svg-flowchart <g> children: {fc_svg_children}")
     print(f"#svg-sequence <g> children: {sq_svg_children}")
@@ -36,6 +44,15 @@ with sync_playwright() as p:
     print(f".cg-edge count: {edges}")
     print(f".cg-msg count: {msgs}")
     print(f".cg-actor count: {actors}")
+    print(f"review mode: {has_review}")
+    print(f"legend visible: {legend_visible}")
+    print(f"data-diff count: {diff_nodes}")
+
+    if has_review:
+        if not legend_visible:
+            errors.append("Review mode enabled but #cg-diff-legend is not visible")
+        if diff_nodes == 0:
+            errors.append("Review mode enabled but no [data-diff] elements found")
 
     print("\n--- console logs ---")
     for l in logs:
