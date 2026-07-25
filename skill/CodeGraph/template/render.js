@@ -724,8 +724,6 @@
     const header = document.getElementById('code-pane-header');
     const body = document.getElementById('code-pane-body');
     const files = data.files || {};
-    // Always make sure the pane is visible (it is via CSS when web mode is on,
-    // but be explicit in case of class drift).
     pane.style.display = '';
 
     function setHeader(text) {
@@ -739,8 +737,19 @@
     }
 
     const text = files[file];
-    // Highlight the whole file in one pass, then split the resulting HTML by
-    // line — one parse is much cheaper than N per-line parses.
+
+    // Review mode: render a git-diff-like unified view when diff data exists.
+    if (data.diff?.files?.[file]) {
+      renderDiffView(file, line, text);
+      return;
+    }
+
+    renderFileView(file, line, text);
+  }
+
+  function renderFileView(file, line, text) {
+    const header = document.getElementById('code-pane-header');
+    const body = document.getElementById('code-pane-body');
     const lang = langForFile(file);
     let html;
     try {
@@ -748,14 +757,12 @@
         ? window.hljs.highlight(text, { language: lang }).value
         : window.hljs.highlightAuto(text).value;
     } catch {
-      // Defensive: if hljs is missing/broken, show plain text.
       html = text.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
     }
     const lines = html.split('\n');
     const total = lines.length;
-    setHeader(`${file} · line ${line} / ${total}`);
+    header.textContent = `${file} \u00b7 line ${line} / ${total}`;
 
-    // Build one <div class="cg-code-line"> per line with a line-number gutter.
     const frag = document.createDocumentFragment();
     lines.forEach((lineHtml, i) => {
       const n = i + 1;
@@ -768,7 +775,6 @@
       num.textContent = n;
       const content = document.createElement('span');
       content.className = 'cg-line-content';
-      // innerHTML is safe here: lineHtml came from hljs's escaped output.
       content.innerHTML = lineHtml || ' ';
       row.appendChild(num);
       row.appendChild(content);
@@ -777,11 +783,190 @@
     body.innerHTML = '';
     body.appendChild(frag);
 
-    // Scroll target line into view (centered). rAF avoids a stale scroll
-    // calculation if the browser hasn't flushed layout yet.
     requestAnimationFrame(() => {
       const target = body.querySelector('.cg-current-line');
       if (target) target.scrollIntoView({ block: 'center' });
+    });
+  }
+
+  function buildUnifiedDiff(baseText, headText, addedLines, removedLines) {
+    const oldLines = baseText.split('\n');
+    const newLines = headText.split('\n');
+    const addedSet = new Set(addedLines);
+    const removedSet = new Set(removedLines);
+    const rows = [];
+
+    let oldI = 0, newI = 0;
+    while (oldI < oldLines.length || newI < newLines.length) {
+      const oldN = oldI + 1;
+      const newN = newI + 1;
+      if (removedSet.has(oldN) && oldI < oldLines.length) {
+        rows.push({ type: 'del', oldN, newN: null, text: oldLines[oldI] });
+        oldI++;
+      } else if (addedSet.has(newN) && newI < newLines.length) {
+        rows.push({ type: 'add', oldN: null, newN, text: newLines[newI] });
+        newI++;
+      } else {
+        const text = newI < newLines.length ? newLines[newI] : oldLines[oldI];
+        rows.push({ type: 'ctx', oldN, newN, text });
+        if (oldI < oldLines.length) oldI++;
+        if (newI < newLines.length) newI++;
+      }
+    }
+
+    const CONTEXT = 3;
+    const changed = rows.map((r, i) => r.type !== 'ctx' ? i : -1).filter(i => i >= 0);
+    if (changed.length === 0) return { rows, hunks: [] };
+
+    const hunks = [];
+    let lastEnd = -1;
+    for (const idx of changed) {
+      const start = Math.max(0, idx - CONTEXT);
+      const end = Math.min(rows.length - 1, idx + CONTEXT);
+      if (start > lastEnd + 1) {
+        hunks.push({ startRow: start, endRow: end });
+      } else if (hunks.length > 0) {
+        hunks[hunks.length - 1].endRow = Math.max(hunks[hunks.length - 1].endRow, end);
+      } else {
+        hunks.push({ startRow: start, endRow: end });
+      }
+      lastEnd = hunks[hunks.length - 1].endRow;
+    }
+
+    return { rows, hunks };
+  }
+
+  function renderDiffView(file, targetLine, headText) {
+    const header = document.getElementById('code-pane-header');
+    const body = document.getElementById('code-pane-body');
+    const diffInfo = data.diff.files[file];
+    const baseText = diffInfo.baseText || '';
+    const status = diffInfo.status;
+
+    if (status === 'deleted') {
+      header.textContent = `${file} \u00b7 DELETED`;
+      const banner = document.createElement('div');
+      banner.className = 'cg-file-deleted-banner';
+      banner.textContent = 'This file was deleted in the reviewed change.';
+      const frag = document.createDocumentFragment();
+      frag.appendChild(banner);
+      renderPlainLines(frag, baseText.split('\n'), 'del', 1);
+      body.innerHTML = '';
+      body.appendChild(frag);
+      return;
+    }
+
+    const { rows, hunks } = buildUnifiedDiff(
+      baseText,
+      headText,
+      diffInfo.addedLines || [],
+      diffInfo.removedLines || []
+    );
+
+    if (hunks.length === 0) {
+      renderFileView(file, targetLine, headText);
+      return;
+    }
+
+    header.textContent = `${file} \u00b7 diff (${hunks.length} hunk${hunks.length > 1 ? 's' : ''})`;
+
+    const frag = document.createDocumentFragment();
+    let targetRow = null;
+
+    let activeHunkIndex = 0;
+    let minDistance = Infinity;
+    hunks.forEach((h, hi) => {
+      for (let ri = h.startRow; ri <= h.endRow; ri++) {
+        const row = rows[ri];
+        if (row.newN === targetLine) {
+          activeHunkIndex = hi;
+          minDistance = -1;
+          return;
+        }
+      }
+      const hunkStartNewN = rows[h.startRow].newN || targetLine;
+      const hunkEndNewN = rows[h.endRow].newN || targetLine;
+      const d = Math.min(
+        Math.abs(hunkStartNewN - targetLine),
+        Math.abs(hunkEndNewN - targetLine)
+      );
+      if (d < minDistance) {
+        minDistance = d;
+        activeHunkIndex = hi;
+      }
+    });
+
+    let previousEnd = -1;
+    hunks.forEach((h, hi) => {
+      if (h.startRow > previousEnd + 1) {
+        const omitted = h.startRow - previousEnd - 1;
+        const gap = document.createElement('div');
+        gap.className = 'cg-diff-hunk-header';
+        gap.textContent = `\u22ef ${omitted} unchanged line${omitted === 1 ? '' : 's'} omitted \u22ef`;
+        frag.appendChild(gap);
+      }
+      previousEnd = h.endRow;
+
+      const firstRow = rows[h.startRow];
+      const lastRow = rows[h.endRow];
+      const oldStart = firstRow.oldN || lastRow.oldN || 1;
+      const newStart = firstRow.newN || lastRow.newN || 1;
+      let oldCount = 0, newCount = 0;
+      for (let ri = h.startRow; ri <= h.endRow; ri++) {
+        const r = rows[ri];
+        if (r.type !== 'add') oldCount++;
+        if (r.type !== 'del') newCount++;
+      }
+      const hunkHeader = document.createElement('div');
+      hunkHeader.className = 'cg-diff-hunk-header';
+      hunkHeader.textContent = `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`;
+      frag.appendChild(hunkHeader);
+
+      for (let ri = h.startRow; ri <= h.endRow; ri++) {
+        const row = rows[ri];
+        const div = document.createElement('div');
+        div.className = 'cg-code-line cg-diff-' + row.type;
+        div.dataset.line = row.newN || row.oldN || '';
+        const num = document.createElement('span');
+        num.className = 'cg-line-num';
+        num.textContent = row.type === 'del' ? row.oldN : (row.newN || '');
+        const content = document.createElement('span');
+        content.className = 'cg-line-content';
+        content.innerHTML = (row.text || ' ').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+        div.appendChild(num);
+        div.appendChild(content);
+        frag.appendChild(div);
+
+        if (hi === activeHunkIndex && targetRow === null && row.newN === targetLine) {
+          targetRow = div;
+        }
+      }
+    });
+
+    body.innerHTML = '';
+    body.appendChild(frag);
+
+    requestAnimationFrame(() => {
+      const scrollTarget = targetRow || body.querySelector('.cg-diff-add, .cg-diff-del');
+      if (scrollTarget) scrollTarget.scrollIntoView({ block: 'center' });
+    });
+  }
+
+  function renderPlainLines(frag, lines, type, startNumber) {
+    lines.forEach((text, i) => {
+      const n = startNumber + i;
+      const div = document.createElement('div');
+      div.className = `cg-code-line cg-diff-${type}`;
+      div.dataset.line = n;
+      const num = document.createElement('span');
+      num.className = 'cg-line-num';
+      num.textContent = n;
+      const content = document.createElement('span');
+      content.className = 'cg-line-content';
+      content.innerHTML = (text || ' ').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+      div.appendChild(num);
+      div.appendChild(content);
+      frag.appendChild(div);
     });
   }
 

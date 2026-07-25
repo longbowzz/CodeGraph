@@ -155,6 +155,28 @@ body:not(.cg-web-mode) #canvas-wrap { width: 100%; height: 100%; }
 }
 .cg-current-line { background: rgba(255, 235, 59, 0.35); }
 .cg-current-line .cg-line-num { color: #6b4e00; font-weight: 600; }
+
+/* ---- Web code pane: unified diff view ---- */
+.cg-diff-hunk-header {
+  background: #f0f0f0;
+  color: #555;
+  font-size: 11px;
+  padding: 2px 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.cg-diff-add { background: #e6ffed; }
+.cg-diff-add .cg-line-num { color: #2e8b2e; border-right-color: #b7ebc7; }
+.cg-diff-del { background: #ffeef0; }
+.cg-diff-del .cg-line-num { color: #b31d28; border-right-color: #f5c6cb; }
+.cg-diff-ctx .cg-line-num { color: #bbb; }
+.cg-file-deleted-banner {
+  background: #ffeef0;
+  color: #b31d28;
+  padding: 6px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid #f5c6cb;
+}
+
 #code-pane-empty {
   padding: 24px;
   color: var(--muted);

@@ -13,7 +13,9 @@ import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { mkdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { parseMermaid, ParseError } from './mermaid-parser.mjs';
+import { getDiffStatus } from './diff-status.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_DIR = resolve(__dirname, '..', 'template');
@@ -131,14 +133,32 @@ const dataBlob = {
 };
 
 // 6a. Review mode: when --diff-base and --diff-head are both provided,
-// attach a review descriptor. The renderer uses its presence to show the
-// diff legend and rely on the per-loc 3rd element for color attribution.
+// attach a review descriptor plus the full diff table. The renderer uses the
+// diff table to show a git-diff-like code pane in web editor mode.
 if (args.diffBase && args.diffHead) {
+  const diff = getDiffStatus(repoAbs, args.diffBase, args.diffHead);
   dataBlob.review = {
-    base: args.diffBase,
-    head: args.diffHead,
+    base: diff.base,
+    head: diff.head,
     range: `${args.diffBase}..${args.diffHead}`,
   };
+  // Embed base-version file contents so the web pane can render unified diffs.
+  for (const [path, info] of Object.entries(diff.files)) {
+    if (info.status === 'added') {
+      info.baseText = '';
+    } else {
+      try {
+        info.baseText = execFileSync('git', ['-C', repoAbs, 'show', `${diff.base}:${path}`], {
+          encoding: 'utf8',
+          maxBuffer: 64 * 1024 * 1024,
+        });
+      } catch (e) {
+        console.error(`[diff] skip base version of ${path}: ${e.message}`);
+        info.baseText = '';
+      }
+    }
+  }
+  dataBlob.diff = diff;
 }
 
 // 6b. Embed every referenced source file so the in-page code pane works

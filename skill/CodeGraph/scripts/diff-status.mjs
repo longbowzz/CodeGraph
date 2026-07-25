@@ -185,24 +185,32 @@ export function getDiffStatus(repo, baseRef, headRef) {
 }
 
 // ---- CLI entrypoint ----
-const args = parseArgs(process.argv);
-let baseRef = args.base;
-let headRef = args.head;
+// Only run CLI code when this module is executed directly. When imported by
+// build-html.mjs for its getDiffStatus export, we must not parse process.argv.
+function main() {
+  const args = parseArgs(process.argv);
+  let baseRef = args.base;
+  let headRef = args.head;
 
-// PR shorthand: `pr/123` for --base means "use the PR's base"; for --head
-// means "use the PR's head". If only --head is pr/N, also pull base from PR.
-if (/^pr\/\d+$/i.test(args.base) || /^pr\/\d+$/i.test(args.head)) {
-  const prNum = /^pr\/(\d+)$/i.exec(args.base)?.[1] || /^pr\/(\d+)$/i.exec(args.head)?.[1];
-  const [prBase, prHead] = resolvePR(args.repo, prNum);
-  if (/^pr\/\d+$/i.test(args.base)) baseRef = prBase;
-  if (/^pr\/\d+$/i.test(args.head)) headRef = prHead;
+  // PR shorthand: `pr/123` for --base means "use the PR's base"; for --head
+  // means "use the PR's head". If only --head is pr/N, also pull base from PR.
+  if (/^pr\/\d+$/i.test(args.base) || /^pr\/\d+$/i.test(args.head)) {
+    const prNum = /^pr\/(\d+)$/i.exec(args.base)?.[1] || /^pr\/(\d+)$/i.exec(args.head)?.[1];
+    const [prBase, prHead] = resolvePR(args.repo, prNum);
+    if (/^pr\/\d+$/i.test(args.base)) baseRef = prBase;
+    if (/^pr\/\d+$/i.test(args.head)) headRef = prHead;
+  }
+
+  const result = getDiffStatus(args.repo, baseRef, headRef);
+  const json = JSON.stringify(result, null, 2);
+  if (args.out) {
+    writeFileSync(args.out, json);
+    console.error(`Wrote ${args.out}`);
+  } else {
+    process.stdout.write(json + '\n');
+  }
 }
 
-const result = getDiffStatus(args.repo, baseRef, headRef);
-const json = JSON.stringify(result, null, 2);
-if (args.out) {
-  writeFileSync(args.out, json);
-  console.error(`Wrote ${args.out}`);
-} else {
-  process.stdout.write(json + '\n');
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
 }
