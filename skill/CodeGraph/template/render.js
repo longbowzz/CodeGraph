@@ -212,7 +212,12 @@
       g.setNode(n.id, { width: w, height: h, _meta: { ...n, location: loc, diff: loc && loc[2] } });
     }
     for (const e of fc.edges) {
-      g.setEdge(e.from, e.to, { _meta: e });
+      g.setEdge(e.from, e.to, {
+        _meta: e,
+        width: e.label ? estimateTextWidth(String(e.label)) + 12 : 0,
+        height: e.label ? 22 : 0,
+        labelpos: 'c',
+      });
     }
 
     dagre.layout(g);
@@ -240,16 +245,15 @@
     vbX.setAttribute('class', 'cg-viewport');
     svg.appendChild(vbX);
 
-    // Arrow marker defs
-    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-    defs.innerHTML = `
-      <marker id="cg-arrow-solid" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#555"/></marker>
-      <marker id="cg-arrow-dashed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#888"/></marker>
-      <marker id="cg-arrow-async" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5" stroke="#555" stroke-width="2" fill="none"/></marker>
-    `;
-    vbX.appendChild(defs);
 
     // Edges first (so nodes draw over)
+    const labelBoxes = [];
+    const nodeBoxes = g.nodes().map(id => {
+      const n = g.node(id);
+      return { x: n.x - n.width / 2, y: n.y - n.height / 2, width: n.width, height: n.height };
+    });
+    const overlaps = (a, b) => a.x < b.x + b.width + 4 && a.x + a.width + 4 > b.x &&
+      a.y < b.y + b.height + 4 && a.y + a.height + 4 > b.y;
     g.edges().forEach(e => {
       const ed = g.edge(e);
       const meta = ed._meta;
@@ -257,6 +261,8 @@
       grp.setAttribute('class', 'cg-edge' + (meta.style === 'dashed' ? ' cg-dashed' : ''));
       grp.setAttribute('data-from', e.v);
       grp.setAttribute('data-to', e.w);
+      const loc = fc.locs && (fc.locs[e.v] || fc.locs[e.w]);
+      grp.setAttribute('data-loc', loc ? 'true' : 'false');
       const edgeDiff = inferEdgeDiff(g.node(e.v)?._meta, g.node(e.w)?._meta);
       if (edgeDiff) grp.setAttribute('data-diff', edgeDiff);
       // Snap endpoints to fixed anchors on the node boundary:
@@ -274,21 +280,68 @@
       const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       // Use smooth Catmull-Rom curves through dagre's waypoints.
       path.setAttribute('d', smoothPathThrough(pts));
-      path.setAttribute('marker-end', meta.style === 'dashed' ? 'url(#cg-arrow-dashed)' : 'url(#cg-arrow-solid)');
       if (meta.style === 'dashed') path.style.strokeDasharray = '5 3';
+      path.setAttribute('class', 'cg-edge-line');
+      const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      hit.setAttribute('class', 'cg-edge-hit');
+      hit.setAttribute('d', path.getAttribute('d'));
+      grp.appendChild(hit);
       grp.appendChild(path);
+      vbX.appendChild(grp);
+      const length = path.getTotalLength();
+      const end = path.getPointAtLength(length);
+      const beforeEnd = path.getPointAtLength(Math.max(0, length - 1));
+      const angle = Math.atan2(end.y - beforeEnd.y, end.x - beforeEnd.x) * 180 / Math.PI;
+      const tipGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      tipGroup.setAttribute('transform', `translate(${end.x},${end.y}) rotate(${angle})`);
+      const tip = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      tip.setAttribute('class', 'cg-edge-tip');
+      tip.setAttribute('points', '0,0 -8,-4 -8,4');
+      tipGroup.appendChild(tip);
+      grp.appendChild(tipGroup);
       if (meta.label) {
-        // Place label near the midpoint of the smoothed path.
-        const mid = pts[Math.floor(pts.length / 2)];
-        // Offset perpendicular to the path so the label doesn't sit on the line.
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', mid.x);
-        text.setAttribute('y', mid.y - 6);
         text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'central');
         text.textContent = meta.label;
         grp.appendChild(text);
+        // Search around the actual curve midpoint, never drift toward endpoints.
+        let best = null;
+        for (const fraction of [0.5, 0.45, 0.55, 0.4, 0.6]) {
+          const distance = length * fraction;
+          const point = path.getPointAtLength(distance);
+          const prev = path.getPointAtLength(Math.max(0, distance - 1));
+          const next = path.getPointAtLength(Math.min(length, distance + 1));
+          const norm = Math.hypot(next.x - prev.x, next.y - prev.y) || 1;
+          for (const offset of [0, 20, -20, 40, -40, 60, -60]) {
+            const x = point.x - (next.y - prev.y) / norm * offset;
+            const y = point.y + (next.x - prev.x) / norm * offset;
+            text.setAttribute('x', x);
+            text.setAttribute('y', y);
+            const measured = text.getBBox();
+            const box = { x: measured.x - 4, y: measured.y - 3, width: measured.width + 8, height: measured.height + 6 };
+            const nodeHits = nodeBoxes.filter(other => overlaps(box, other)).length;
+            const labelHits = labelBoxes.filter(other => overlaps(box, other)).length;
+            const score = nodeHits * 100000 + labelHits * 10000 + Math.abs(offset) + Math.abs(fraction - 0.5) * length;
+            if (!best || score < best.score) best = { x, y, box, score };
+          }
+        }
+        text.setAttribute('x', best.x);
+        text.setAttribute('y', best.y);
+        const box = best.box;
+        labelBoxes.push(box);
+        const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bg.setAttribute('class', 'cg-edge-label-bg');
+        bg.setAttribute('x', box.x - 4);
+        bg.setAttribute('y', box.y - 3);
+        bg.setAttribute('width', box.width + 8);
+        bg.setAttribute('height', box.height + 6);
+        bg.setAttribute('rx', 3);
+        grp.insertBefore(bg, text);
+        minX = Math.min(minX, box.x - 8); minY = Math.min(minY, box.y - 7);
+        maxX = Math.max(maxX, box.x + box.width + 8);
+        maxY = Math.max(maxY, box.y + box.height + 7);
       }
-      vbX.appendChild(grp);
     });
 
     // Nodes
@@ -664,7 +717,9 @@
     }
     const edgeEl = e.target.closest('.cg-edge');
     if (edgeEl) {
-      // Edges don't carry locations in v1; ignore.
+      const locs = data.flowchart.locs || {};
+      const loc = locs[edgeEl.getAttribute('data-from')] || locs[edgeEl.getAttribute('data-to')];
+      if (loc) jumpTo(loc);
     }
   });
 
@@ -844,7 +899,7 @@
     const status = diffInfo.status;
 
     if (status === 'deleted') {
-      header.textContent = `${file} \u00b7 DELETED`;
+      header.textContent = `${file} \u00b7 line ${targetLine} \u00b7 DELETED`;
       const banner = document.createElement('div');
       banner.className = 'cg-file-deleted-banner';
       banner.textContent = 'This file was deleted in the reviewed change.';
@@ -853,6 +908,11 @@
       renderPlainLines(frag, baseText.split('\n'), 'del', 1);
       body.innerHTML = '';
       body.appendChild(frag);
+      const target = body.querySelector(`[data-line="${targetLine}"]`);
+      if (target) {
+        target.classList.add('cg-current-line');
+        requestAnimationFrame(() => target.scrollIntoView({ block: 'center' }));
+      }
       return;
     }
 
@@ -868,36 +928,25 @@
       return;
     }
 
-    header.textContent = `${file} \u00b7 diff (${hunks.length} hunk${hunks.length > 1 ? 's' : ''})`;
+    // Include the selected anchor even when it falls in omitted context.
+    const targetIndex = rows.findIndex(row => row.newN === targetLine);
+    if (targetIndex >= 0 && !hunks.some(h => targetIndex >= h.startRow && targetIndex <= h.endRow)) {
+      hunks.push({ startRow: Math.max(0, targetIndex - 3), endRow: Math.min(rows.length - 1, targetIndex + 3) });
+      hunks.sort((a, b) => a.startRow - b.startRow);
+      for (let i = 1; i < hunks.length;) {
+        if (hunks[i].startRow <= hunks[i - 1].endRow + 1) {
+          hunks[i - 1].endRow = Math.max(hunks[i - 1].endRow, hunks[i].endRow);
+          hunks.splice(i, 1);
+        } else i++;
+      }
+    }
+    header.textContent = `${file} \u00b7 line ${targetLine} \u00b7 diff (${hunks.length} hunk${hunks.length > 1 ? 's' : ''})`;
 
     const frag = document.createDocumentFragment();
     let targetRow = null;
 
-    let activeHunkIndex = 0;
-    let minDistance = Infinity;
-    hunks.forEach((h, hi) => {
-      for (let ri = h.startRow; ri <= h.endRow; ri++) {
-        const row = rows[ri];
-        if (row.newN === targetLine) {
-          activeHunkIndex = hi;
-          minDistance = -1;
-          return;
-        }
-      }
-      const hunkStartNewN = rows[h.startRow].newN || targetLine;
-      const hunkEndNewN = rows[h.endRow].newN || targetLine;
-      const d = Math.min(
-        Math.abs(hunkStartNewN - targetLine),
-        Math.abs(hunkEndNewN - targetLine)
-      );
-      if (d < minDistance) {
-        minDistance = d;
-        activeHunkIndex = hi;
-      }
-    });
-
     let previousEnd = -1;
-    hunks.forEach((h, hi) => {
+    hunks.forEach(h => {
       if (h.startRow > previousEnd + 1) {
         const omitted = h.startRow - previousEnd - 1;
         const gap = document.createElement('div');
@@ -937,7 +986,8 @@
         div.appendChild(content);
         frag.appendChild(div);
 
-        if (hi === activeHunkIndex && targetRow === null && row.newN === targetLine) {
+        if (targetRow === null && row.newN === targetLine) {
+          div.classList.add('cg-current-line');
           targetRow = div;
         }
       }

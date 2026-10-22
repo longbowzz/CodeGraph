@@ -41,6 +41,21 @@ with sync_playwright() as p:
     assert captured and captured.startswith("cursor://"), f"expected cursor:// URL, got: {captured}"
     print("OK")
 
+    # ---- Flowchart edge and label jump ----
+    for edge in page.locator('.cg-edge[data-loc="true"]').all():
+        expected = edge.evaluate(r'''el => {
+            const data = JSON.parse(document.getElementById('cg-data').textContent);
+            const locs = data.flowchart.locs;
+            const loc = locs[el.dataset.from] || locs[el.dataset.to];
+            const file = data.repo.replace(/\/$/, '') + '/' + loc[0];
+            return `cursor://file${file}:${loc[1]}`;
+        }''')
+        for target in edge.locator('.cg-edge-hit, text, .cg-edge-label-bg').all():
+            page.evaluate('window.__cg_lastUrl = null')
+            target.dispatch_event('click')
+            assert page.evaluate('window.__cg_lastUrl') == expected
+    print("OK: flowchart edge and label jump")
+
     # ---- Pan test: real drag via dispatchEvent ----
     print("\n=== Pan via synthesized pointer events ===")
     vp_selector = ".cg-viewport"  # only the active tab's viewport is visible

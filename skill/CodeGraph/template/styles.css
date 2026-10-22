@@ -169,6 +169,9 @@ body:not(.cg-web-mode) #canvas-wrap { width: 100%; height: 100%; }
 .cg-diff-del { background: #ffeef0; }
 .cg-diff-del .cg-line-num { color: #b31d28; border-right-color: #f5c6cb; }
 .cg-diff-ctx .cg-line-num { color: #bbb; }
+.cg-code-line.cg-current-line { box-shadow: inset 4px 0 #b77900; }
+.cg-code-line.cg-current-line .cg-line-num { color: #6b4e00; background: #fff0b3; font-weight: 700; }
+.cg-code-line.cg-current-line .cg-line-num::before { content: '▶ '; }
 .cg-file-deleted-banner {
   background: #ffeef0;
   color: #b31d28;
@@ -200,22 +203,29 @@ svg.cg-svg { width: 100%; height: 100%; display: block; user-select: none; }
 .cg-node[data-shape="terminal"] polygon { fill: var(--terminal-fill); stroke: var(--terminal-stroke); }
 .cg-node[data-shape="storage"] polygon { fill: var(--storage-fill); stroke: var(--storage-stroke); }
 
-.cg-edge path { fill: none; stroke: var(--edge); stroke-width: 1.5; }
-.cg-edge text { fill: var(--muted); font-size: 11px; pointer-events: none; user-select: none; }
+.cg-edge { --edge-color: var(--edge); }
+.cg-edge .cg-edge-line { fill: none; stroke: var(--edge-color); stroke-width: 1.5; }
+.cg-edge .cg-edge-tip { fill: var(--edge-color); stroke: none; }
+.cg-edge .cg-edge-hit { fill: none; stroke: transparent !important; stroke-width: 14 !important; stroke-dasharray: none !important; pointer-events: stroke; }
+.cg-edge text { fill: var(--edge-color); font-size: 11px; pointer-events: all; user-select: none; }
+.cg-edge-label-bg { fill: var(--bg); pointer-events: all; }
+.cg-edge[data-loc="true"] { cursor: pointer; }
 
 .cg-node:hover rect,
 .cg-node:hover polygon,
 .cg-node:hover circle { fill: var(--highlight) !important; stroke: var(--accent); stroke-width: 2; }
 .cg-node[data-loc="true"] { cursor: pointer; }
-.cg-edge:hover path { stroke: var(--accent); stroke-width: 2.5; }
+.cg-edge:hover { --edge-color: var(--accent) !important; }
+.cg-edge:hover .cg-edge-line { stroke-width: 2; }
+.cg-edge:hover .cg-edge-tip { transform: scale(1.333333); }
+.cg-edge:hover text { fill: var(--accent); }
 
 /* Sequence */
 .cg-actor rect { fill: #fff; stroke: #888; stroke-width: 1.5; }
 .cg-actor text { font-size: 13px; pointer-events: none; user-select: none; }
 .cg-lifeline { stroke: #aaa; stroke-dasharray: 4 4; stroke-width: 1; }
-/* marker-end is set per-path via inline attribute so each SVG can reference
-   its own defs (cg-arrow-* for flowchart, cg-seq-* for sequence). Don't set
-   marker-end here — CSS would override the inline attribute and break arrows. */
+/* Sequence marker-end is set per-path so each SVG references its own defs.
+   Flowchart tips are polygons that inherit their edge group's color. */
 .cg-msg path { fill: none; stroke: #555; stroke-width: 1.5; }
 .cg-msg.cg-return path { stroke-dasharray: 5 3; }
 .cg-msg:hover path { stroke: var(--accent); stroke-width: 2.5; }
@@ -254,9 +264,10 @@ svg.cg-svg { width: 100%; height: 100%; display: block; user-select: none; }
 }
 
 /* Edges */
-.cg-edge[data-diff="added"] path { stroke: var(--diff-added-stroke) !important; }
-.cg-edge[data-diff="modified"] path { stroke: var(--diff-modified-stroke) !important; }
-.cg-edge[data-diff="removed"] path { stroke: var(--diff-removed-stroke) !important; stroke-dasharray: 5 3; }
+.cg-edge[data-diff="added"] { --edge-color: var(--diff-added-stroke); }
+.cg-edge[data-diff="modified"] { --edge-color: var(--diff-modified-stroke); }
+.cg-edge[data-diff="removed"] { --edge-color: var(--diff-removed-stroke); }
+.cg-edge[data-diff="removed"] .cg-edge-line { stroke-dasharray: 5 3; }
 
 /* Sequence actors */
 .cg-actor[data-diff="added"] rect { fill: var(--diff-added-fill) !important; stroke: var(--diff-added-stroke) !important; }
