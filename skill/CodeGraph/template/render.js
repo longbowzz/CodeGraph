@@ -247,6 +247,8 @@
 
 
     // Edges first (so nodes draw over)
+    const labelLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    vbX.appendChild(labelLayer);
     const labelBoxes = [];
     const nodeBoxes = g.nodes().map(id => {
       const n = g.node(id);
@@ -287,7 +289,7 @@
       hit.setAttribute('d', path.getAttribute('d'));
       grp.appendChild(hit);
       grp.appendChild(path);
-      vbX.appendChild(grp);
+      vbX.insertBefore(grp, labelLayer);
       const length = path.getTotalLength();
       const end = path.getPointAtLength(length);
       const beforeEnd = path.getPointAtLength(Math.max(0, length - 1));
@@ -300,11 +302,27 @@
       tipGroup.appendChild(tip);
       grp.appendChild(tipGroup);
       if (meta.label) {
+        const labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        for (const attr of ['class', 'data-from', 'data-to', 'data-loc', 'data-diff']) {
+          if (grp.hasAttribute(attr)) labelGroup.setAttribute(attr, grp.getAttribute(attr));
+        }
+        labelLayer.appendChild(labelGroup);
+        for (const element of [grp, labelGroup]) {
+          element.addEventListener('pointerenter', () => {
+            grp.classList.add('cg-edge-hover');
+            labelGroup.classList.add('cg-edge-hover');
+          });
+          element.addEventListener('pointerleave', () => {
+            grp.classList.remove('cg-edge-hover');
+            labelGroup.classList.remove('cg-edge-hover');
+          });
+        }
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         text.setAttribute('text-anchor', 'middle');
         text.setAttribute('dominant-baseline', 'central');
         text.textContent = meta.label;
-        grp.appendChild(text);
+        labelGroup.appendChild(text);
+        const measured = text.getBBox();
         // Search around the actual curve midpoint, never drift toward endpoints.
         let best = null;
         for (const fraction of [0.5, 0.45, 0.55, 0.4, 0.6]) {
@@ -316,10 +334,7 @@
           for (const offset of [0, 20, -20, 40, -40, 60, -60]) {
             const x = point.x - (next.y - prev.y) / norm * offset;
             const y = point.y + (next.x - prev.x) / norm * offset;
-            text.setAttribute('x', x);
-            text.setAttribute('y', y);
-            const measured = text.getBBox();
-            const box = { x: measured.x - 4, y: measured.y - 3, width: measured.width + 8, height: measured.height + 6 };
+            const box = { x: x + measured.x - 4, y: y + measured.y - 3, width: measured.width + 8, height: measured.height + 6 };
             const nodeHits = nodeBoxes.filter(other => overlaps(box, other)).length;
             const labelHits = labelBoxes.filter(other => overlaps(box, other)).length;
             const score = nodeHits * 100000 + labelHits * 10000 + Math.abs(offset) + Math.abs(fraction - 0.5) * length;
@@ -332,12 +347,12 @@
         labelBoxes.push(box);
         const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
         bg.setAttribute('class', 'cg-edge-label-bg');
-        bg.setAttribute('x', box.x - 4);
-        bg.setAttribute('y', box.y - 3);
-        bg.setAttribute('width', box.width + 8);
-        bg.setAttribute('height', box.height + 6);
+        bg.setAttribute('x', box.x);
+        bg.setAttribute('y', box.y);
+        bg.setAttribute('width', box.width);
+        bg.setAttribute('height', box.height);
         bg.setAttribute('rx', 3);
-        grp.insertBefore(bg, text);
+        labelGroup.insertBefore(bg, text);
         minX = Math.min(minX, box.x - 8); minY = Math.min(minY, box.y - 7);
         maxX = Math.max(maxX, box.x + box.width + 8);
         maxY = Math.max(maxY, box.y + box.height + 7);
@@ -785,7 +800,11 @@
       header.textContent = text;
     }
 
-    if (!files[file]) {
+    if (data.diff?.files?.[file]?.status === 'deleted') {
+      renderDiffView(file, line, '');
+      return;
+    }
+    if (!Object.prototype.hasOwnProperty.call(files, file)) {
       setHeader(file);
       body.innerHTML = `<div id="code-pane-empty">File not embedded: <code>${file}</code></div>`;
       return;
