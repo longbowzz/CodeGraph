@@ -191,18 +191,24 @@ CodeGraph/
 
 ## 贡献
 
-欢迎提 Issue 和 PR。提交前请先跑冒烟测试：
+欢迎提 Issue 和 PR。提交前在仓库根目录运行脚本回归测试：
 
 ```bash
-node skill/CodeGraph/scripts/_smoke-parser.mjs
-node skill/CodeGraph/scripts/_smoke-validate.mjs
+npm test
 ```
 
-涉及浏览器层面的改动，额外运行：
+仅需 Node.js 和 Git，不需要安装 npm 依赖或浏览器。覆盖 Mermaid 解析、位置校验与格式兼容、Git diff 提取、HTML 构建、源码嵌入与转义、产物验证；测试使用临时目录并自动清理。PR 和推送到 `main` 时，GitHub Actions 会在 Node.js 18、22 上运行同一套测试。
+
+`WORKTREE` 评审包含已暂存和未暂存改动；未跟踪文件在 `git add` 后才会出现。Diff 回归覆盖删除、重命名、多段修改、纯插入/删除、末尾无换行、空格/Unicode 文件名和无效引用。CLI 测试检查参数错误、退出码和结构化校验失败。
+
+修改 renderer、模板或 vendor 时，在已安装 Playwright 和 Chromium 的 Python 环境中额外运行：
 
 ```bash
-python3 skill/CodeGraph/scripts/_browser-test.py path/to/graph.html
+python3 -I skill/CodeGraph/scripts/_semantic-location-test.py
+python3 -I skill/CodeGraph/scripts/_mermaid-browser-test.py
 ```
+
+浏览器测试会自行创建样例，检查真实源码点击、图形布局、review 模式、主题和离线呈现。vendor 重建是独立的开发检查：`npm ci --ignore-scripts && npm run build:mermaid`。
 
 ## 协议
 

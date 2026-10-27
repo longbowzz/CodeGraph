@@ -221,18 +221,24 @@ CodeGraph/
 
 ## Contributing
 
-Issues and PRs welcome. Please run the smoke tests before submitting:
+Issues and PRs welcome. Run the script regression suite from the repository root before submitting:
 
 ```bash
-node skill/CodeGraph/scripts/_smoke-parser.mjs
-node skill/CodeGraph/scripts/_smoke-validate.mjs
+npm test
 ```
 
-For browser-level changes, also run:
+This requires Node.js and Git, with no dependency install or browser. It covers Mermaid parsing, location validation and format compatibility, Git diff extraction, HTML building, source embedding/escaping, and output verification. Fixtures use temporary directories and are cleaned up. Pull requests and pushes to `main` run the same suite on Node.js 18 and 22 through GitHub Actions.
+
+For `WORKTREE` reviews, staged and unstaged changes are included; untracked files appear only after `git add`. Diff regressions cover deletions, renames, multiple hunks, line insertions/deletions, missing final newlines, spaces/Unicode in filenames, and invalid references. CLI tests verify argument errors, exit codes, and structured validation failures.
+
+For renderer, template, or vendor changes, also run the browser suites with a Python environment containing Playwright and Chromium:
 
 ```bash
-python3 skill/CodeGraph/scripts/_browser-test.py path/to/graph.html
+python3 -I skill/CodeGraph/scripts/_semantic-location-test.py
+python3 -I skill/CodeGraph/scripts/_mermaid-browser-test.py
 ```
+
+These create their own fixtures and check real source clicks, diagram geometry, review mode, themes, and offline rendering. Rebuilding vendored assets remains a separate development check: `npm ci --ignore-scripts && npm run build:mermaid`.
 
 ## License
 

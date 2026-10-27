@@ -137,27 +137,24 @@ export function getDiffStatus(repo, baseRef, headRef) {
     headSha = resolveRef(repoAbs, headRef);
   }
 
-  // File-level status via --name-status. Format:
-  //   M\tpath
-  //   A\tpath
-  //   D\tpath
-  //   R<number>\told\tnew   (rename; v1 treats as delete+add, see below)
+  // NUL-delimited status/path fields preserve Unicode and whitespace verbatim.
   const nameStatusRaw = headIsWorktree
-    ? git(repoAbs, 'diff', '--no-color', '--name-status', baseSha)
-    : git(repoAbs, 'diff', '--no-color', '--name-status', `${baseSha}..${headSha}`);
+    ? git(repoAbs, 'diff', '--no-color', '--name-status', '-z', baseSha)
+    : git(repoAbs, 'diff', '--no-color', '--name-status', '-z', `${baseSha}..${headSha}`);
 
   const files = {};
-  for (const line of nameStatusRaw.split('\n').filter(Boolean)) {
-    const parts = line.split('\t');
-    const st = parts[0];
-    let status, path;
-    if (st === 'A') { status = 'added'; path = parts[1]; }
-    else if (st === 'M') { status = 'modified'; path = parts[1]; }
-    else if (st === 'D') { status = 'deleted'; path = parts[1]; }
+  const fields = nameStatusRaw.split('\0');
+  for (let i = 0; i < fields.length - 1;) {
+    const st = fields[i++];
+    const oldPath = fields[i++];
+    // Copies also have two path fields, even though they are not attributed here.
+    const newPath = /^[RC]/.test(st) ? fields[i++] : undefined;
+    let status, path = oldPath;
+    if (st === 'A') { status = 'added'; }
+    else if (st === 'M') { status = 'modified'; }
+    else if (st === 'D') { status = 'deleted'; }
     else if (st.startsWith('R')) {
       // Rename: treat as delete old + add new (v1 simplification).
-      const oldPath = parts[1];
-      const newPath = parts[2];
       files[oldPath] = { status: 'deleted', addedLines: [], removedLines: [] };
       files[newPath] = { status: 'added', addedLines: [], removedLines: [] };
       continue;
