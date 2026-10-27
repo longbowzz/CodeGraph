@@ -219,6 +219,61 @@ def check_both(browser, html, root, source, color, review=False):
     print(f'PASS both {color}{" review" if review else ""}: actors/activation/notes/fragments/autonumber, repeated message IDs, real clicks, offline zero HTTP requests')
 
 
+def check_regressions(browser, html, root):
+    context, page, errors, requests = open_page(browser, html)
+    try:
+        expect(page.locator('.cg-node')).to_have_count(3, timeout=30000)
+        expect(page.locator('#loading')).to_be_hidden()
+        expect(page.locator('#cg-render-errors')).to_have_count(0)
+        assert not page.locator('.cg-node[data-id="group"]').count(), 'visual cluster became a semantic node'
+        assert_geometry(page.locator('#svg-flowchart .cluster'))
+        page.evaluate('window.__cg_captureUrl = true')
+        for occurrence, line in ((1, 5), (2, 6)):
+            identity = json.dumps(['A', 'A', occurrence], separators=(',', ':'))
+            wrappers = page.locator(f".cg-edge[data-edge-id='{identity}']")
+            paths = wrappers.locator('.cg-edge-line')
+            assert paths.count() >= 1, identity
+            assert paths.evaluate_all('els => els.every(el => el.getTotalLength() > 0)'), identity
+            # Official Mermaid may split a self-loop into several path segments.
+            labels = wrappers.locator('foreignObject:visible, text:visible')
+            page.select_option('#editor-select', 'cursor')
+            page.evaluate('window.__cg_lastUrl = null')
+            labels.first.click()
+            assert page.evaluate('window.__cg_lastUrl') == f'cursor://file{root / "source.py"}:{line}'
+        cluster_edge = json.dumps(['group', 'C', 1], separators=(',', ':'))
+        assert page.locator(f".cg-edge[data-edge-id='{cluster_edge}'] .cg-edge-line").count()
+        url = page.url
+        jump(page, '.cg-node[data-id="A"]', root, 1)
+        assert page.url == url, 'Mermaid click href navigated away'
+        assert not page.locator('.cg-node a[href]').count(), 'Mermaid link survived source-navigation decoration'
+        edge = page.locator('.cg-edge[data-from="A"][data-to="B"]')
+        expect(edge.first).to_have_attribute('data-diff', 'unchanged')
+        expect(page.locator('.cg-node[data-id="A"]')).to_have_attribute('data-diff', 'modified')
+        page.select_option('#editor-select', 'cursor')
+        page.evaluate('window.__cg_lastUrl = null')
+        page.locator('#reset-view').click()
+        page.locator('.cg-node[data-id="B"]').locator('text, foreignObject').first.click()
+        expect(page.locator('#editor-select')).to_have_value('web')
+        assert page.evaluate('window.__cg_lastUrl') is None, 'removed location opened current worktree in external editor'
+        expect(page.locator('#code-pane-header')).to_contain_text('source.py · base line 2 · diff')
+        current = page.locator('#code-pane .cg-current-line')
+        expect(current).to_have_count(1)
+        expect(current).to_have_attribute('data-line', '2')
+        expect(current.locator('.cg-line-content')).to_have_text('old_removed = 200')
+        assert 'cg-diff-del' in current.get_attribute('class')
+        page.locator('#reset-view').click()
+        page.locator('.cg-node[data-id="C"]').locator('text, foreignObject').first.click()
+        current = page.locator('#code-pane .cg-current-line')
+        expect(current).to_have_count(1)
+        expect(current).to_have_attribute('data-line', '2')
+        expect(current.locator('.cg-line-content')).to_have_text('cr_second = 2')
+        assert not errors, errors
+        assert not requests, requests
+    finally:
+        context.close()
+    print('PASS regressions: multiple self-loops, cluster endpoint, inert href, exact unchanged edge, removed base line, CR-only web line 2')
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='codegraph-mermaid-browser-') as temporary:
         root = Path(temporary).resolve()
@@ -246,9 +301,31 @@ def main():
         def invalid_source(data):
             data['flowchart']['source'] = 'flowchart LR\n A[unterminated'
         broken = rewrite_data(flows['LR'], root / 'render-error.html', invalid_source)
+        (root / 'cr.py').write_bytes(b'cr_first = 1\rcr_second = 2\rcr_third = 3\r')
+        regression_source = '''flowchart LR
+    subgraph group[Visual group]
+        A[Caller] -->|invoke| B[Removed behavior]
+        A -->|first self| A
+        A -->|second self| A
+    end
+    group -->|leave group| C[CR second line]
+    click A href "https://example.invalid/never-navigate"
+'''
+        regression_locs = {'nodes': {'A': ['source.py', 1, 'modified'],
+                                     'B': ['source.py', 2, 'removed'], 'C': ['cr.py', 2]},
+                           'edges': [{'from': a, 'to': b, 'occurrence': occurrence, 'loc': ['source.py', line]}
+                                     for a, b, occurrence, line in [('A', 'B', 1, 4), ('A', 'A', 1, 5),
+                                                                   ('A', 'A', 2, 6), ('group', 'C', 1, 7)]]}
+        regressions_raw = build(root, 'regressions-raw', regression_source, regression_locs)
+        def regression_review(data):
+            data['review'] = {'base': 'fixture-base', 'head': 'fixture-head'}
+            data['diff'] = {'files': {'source.py': {'status': 'modified', 'addedLines': [2],
+                            'removedLines': [2], 'baseText': source.replace('value_2 = 2', 'old_removed = 200')}}}
+        regressions = rewrite_data(regressions_raw, root / 'regressions.html', regression_review)
         with sync_playwright() as playwright:
             browser = playwright.chromium.launch(headless=True)
             try:
+                check_regressions(browser, regressions, root)
                 for direction, html in flows.items():
                     check_flow(browser, html, root, direction, 'ABC')
                 check_flow(browser, complex_flow, root, 'complex', 'ABCD', complex_graph=True)
@@ -265,7 +342,7 @@ def main():
                 print('PASS render failure: visible error alert, loading dismissed, offline zero HTTP requests')
             finally:
                 browser.close()
-    print('PASS official Mermaid browser integration: 7 builds, 9 browser cases; fixtures cleaned up')
+    print('PASS official Mermaid browser integration: 8 builds, 10 browser cases; fixtures cleaned up')
 
 
 if __name__ == '__main__':

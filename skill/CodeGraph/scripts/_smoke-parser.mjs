@@ -203,8 +203,31 @@ try {
   fail++;
 }
 
+// Document boundaries must not consume quoted labels or discard trailing input.
+for (const [name, text, expected] of [
+  ['multiline header-looking label', 'flowchart TD\nA["first\nsequenceDiagram\nlast"] --> B', ['flowchart']],
+  ['comment quote before second diagram', 'flowchart TD\n%% " unmatched comment quote\nA --> B\n\nsequenceDiagram\nA->>B: work', ['flowchart', 'sequence']],
+  ['reverse diagram order', 'sequenceDiagram\nA->>B: work\n\nflowchart LR\nA --> B', ['flowchart', 'sequence']],
+]) {
+  try {
+    const result = await parseMermaid(text);
+    if (expected.every(kind => result[kind])) {
+      console.log(`PASS  ${name}`);
+      pass++;
+    } else {
+      console.log(`FAIL  ${name} — missing diagram`);
+      fail++;
+    }
+  } catch (error) {
+    console.log(`FAIL  ${name} — ${error.message}`);
+    fail++;
+  }
+}
+
 // Keep negative coverage for genuinely malformed syntax only.
 const invalid = [
+  { name: 'third document rejected', text: 'flowchart TD\nA --> B\nsequenceDiagram\nA->>B: work\nflowchart LR\nC --> D' },
+  { name: 'trailing junk rejected', text: 'flowchart TD\nA --> B\nsequenceDiagram\nA->>B: work\nnot valid Mermaid' },
   { name: 'unclosed loop', text: `sequenceDiagram\nloop retry\nA->>A: ping` },
   { name: 'message missing colon', text: `sequenceDiagram\nA->>B hi` },
 ];

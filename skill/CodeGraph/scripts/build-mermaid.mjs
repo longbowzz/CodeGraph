@@ -49,7 +49,31 @@ await build({
   target: 'es2020',
   minify: true,
   define: { 'process.env.NODE_ENV': '"production"' },
-  plugins: [{ name: 'codegraph-sequence-identity', setup(b) {
+  plugins: [{ name: 'codegraph-semantic-identity', setup(b) {
+    b.onLoad({ filter: /(?:dagre-|chunk-QXUST7PY).*\.mjs$/ }, ({ path }) => {
+      let contents = readFileSync(path, 'utf8');
+      const replace = (before, after) => {
+        if (contents.split(before).length !== 2) throw new Error(`Mermaid flow patch anchor changed: ${before}`);
+        contents = contents.replace(before, after);
+      };
+      if (path.includes('/dagre-')) {
+        // Official dagre splits every self-loop into three cloned edges. Preserve
+        // the DB id before cloning and key helper nodes/segments by this edge,
+        // so parallel self-loops cannot overwrite each other in graphlib.
+        replace('const nodeId = edge.start;', 'edge.cgOriginalEdgeId = edge.id;\n      const nodeId = edge.start;');
+        replace('const specialId1 = nodeId + "---" + nodeId + "---1";', 'const specialId1 = edge.id + "---cg-loop-1";');
+        replace('const specialId2 = nodeId + "---" + nodeId + "---2";', 'const specialId2 = edge.id + "---cg-loop-2";');
+        for (const suffix of ['1', 'mid', '2']) replace(`= nodeId + "-cyclic-special-${suffix}";`, `= edge.id + "-cyclic-special-${suffix}";`);
+        for (const suffix of ['0', '1']) replace(`, nodeId + "-cyclic-special-${suffix}");`, `, edge.id + "-cyclic-special-${suffix}");`);
+        replace(', nodeId + "-cyc<lic-special-2");', ', edge.id + "-cyclic-special-2");');
+      } else {
+        // Both the edge path and its independent label retain official DB id.
+        const before = '.attr("data-id", edge.id)';
+        if (contents.split(before).length !== 3) throw new Error('Mermaid edge data-id patch anchors changed');
+        contents = contents.replaceAll(before, '.attr("data-id", edge.cgOriginalEdgeId || edge.id)');
+      }
+      return { contents, loader: 'js' };
+    });
     b.onLoad({ filter: /sequenceDiagram-.*\.mjs$/ }, async ({ path }) => {
       let contents = readFileSync(path, 'utf8');
       const replace = (before, after) => {
@@ -87,7 +111,8 @@ writeFileSync(resolve(vendor, 'mermaid-manifest.json'), JSON.stringify({
   source: 'https://registry.npmjs.org/mermaid/-/mermaid-11.12.0.tgz',
   integrity: 'sha512-ZudVx73BwrMJfCFmSSJT84y6u5brEoV8DOItdHomNLz32uBjNrelm7mg95X7g+C6UoQH/W6mBLGDEDv73JdxBg==',
   build: 'npm ci --ignore-scripts && npm run build:mermaid',
-  patches: ['Sequence renderer carries arrow-only DB index into data-cg-message group; actor dispatcher wraps all actor shapes with data-cg-actor.',
+  patches: ['Dagre self-loop clones preserve original DB edge id in path/label data-id; helper nodes and segment ids are unique per original edge.',
+    'Sequence renderer carries arrow-only DB index into data-cg-message group; actor dispatcher wraps all actor shapes with data-cg-actor.',
     'Node-only DOMPurify identity shim for semantic extraction; Node box CSS validation omitted. Browser retains real DOMPurify and CSS validation.'],
   files,
 }, null, 2) + '\n');

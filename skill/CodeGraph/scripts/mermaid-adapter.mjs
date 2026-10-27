@@ -3,17 +3,24 @@ import mermaid from 'mermaid';
 
 export const version = '11.12.0';
 export const messageTypes = new Set([0, 1, 3, 4, 5, 6, 24, 25, 33, 34]);
-const config = { startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true };
+export const MAX_TEXT_SIZE = 500000;
+const config = { startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true, maxTextSize: MAX_TEXT_SIZE };
+
+function checkSourceSize(source) {
+  if (source.length > MAX_TEXT_SIZE) throw new Error(`Mermaid source exceeds ${MAX_TEXT_SIZE} characters`);
+}
 
 export async function parseDiagram(source) {
+  checkSourceSize(source);
   mermaid.initialize(config);
   const diagram = await mermaid.mermaidAPI.getDiagramFromText(source);
   const db = diagram.db;
   if (diagram.type.startsWith('flowchart')) {
     const occurrences = new Map();
+    const groups = new Set(db.getSubGraphs().map(group => group.id));
     return {
       type: 'flowchart', source, direction: db.getDirection() || 'TB',
-      nodes: [...db.getVertices().values()].map(n => ({
+      nodes: [...db.getVertices().values()].filter(n => !groups.has(n.id)).map(n => ({
         id: n.id, label: n.text ?? n.id, shape: n.type || 'square', domId: n.domId,
       })),
       edges: db.getEdges().map(e => {
@@ -54,19 +61,32 @@ export async function parseDiagram(source) {
 
 export async function render(id, source, options = {}) {
   const model = await parseDiagram(source);
-  mermaid.initialize({ ...config, ...options, startOnLoad: false, securityLevel: 'strict' });
+  mermaid.initialize({ ...config, ...options, startOnLoad: false, securityLevel: 'strict', maxTextSize: MAX_TEXT_SIZE });
   const result = await mermaid.render(id, source);
   // Mermaid emits HTML void tags inside foreignObject labels. HTML parsing
   // preserves SVG namespaces while accepting that embedded label markup.
   const template = document.createElement('template');
   template.innerHTML = result.svg;
   const svg = template.content.querySelector('svg');
+  // Source navigation belongs to CodeGraph even when the Mermaid source uses
+  // click/link directives. Keep anchor contents without native navigation.
+  for (const anchor of svg.querySelectorAll('a')) {
+    anchor.removeAttribute('href');
+    anchor.removeAttribute('xlink:href');
+    anchor.removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
+    anchor.removeAttribute('target');
+  }
   if (model.type === 'flowchart') {
     const ids = new Map([...svg.querySelectorAll('[id]')].map(el => [el.id, el]));
+    const edgeParts = new Map();
+    for (const el of svg.querySelectorAll('[data-id]')) {
+      const key = el.getAttribute('data-id');
+      if (!edgeParts.has(key)) edgeParts.set(key, []);
+      edgeParts.get(key).push(el);
+    }
     for (const node of model.nodes) ids.get(node.domId)?.setAttribute('data-cg-node', node.id);
     for (const edge of model.edges) {
-      for (const el of svg.querySelectorAll('[data-id]')) {
-        if (el.getAttribute('data-id') !== edge.domId) continue;
+      for (const el of edgeParts.get(edge.domId) || []) {
         const target = el.closest('.edgeLabels > .edgeLabel') || el;
         target.setAttribute('data-cg-edge', edge.id);
       }

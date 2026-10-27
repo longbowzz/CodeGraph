@@ -74,8 +74,14 @@
     const file = Array.isArray(loc) ? loc[0] : loc.file;
     const line = Array.isArray(loc) ? loc[1] : loc.line;
     if (!file || !line) return;
+    const status = Array.isArray(loc) ? loc[2] : loc.status;
+    if (status === 'removed' && !editors[currentEditor].inPage) {
+      currentEditor = 'web';
+      editorSel.value = 'web';
+      applyWebMode();
+    }
     if (editors[currentEditor].inPage) {
-      showCodeInPane(file, line);
+      showCodeInPane(file, line, status);
       return;
     }
     const p = absPath(file);
@@ -133,7 +139,7 @@
     return { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
   }
 
-  function markEdgeGroup(el, fc, edgeById, edgeGroups) {
+  function markEdgeGroup(el, fc, edgeById, edgeGroups, nodeById) {
     const id = el.getAttribute('data-cg-edge');
     if (el.localName === 'path') {
       const group = document.createElementNS(SVG_NS, 'g');
@@ -148,12 +154,13 @@
     const [from, to] = JSON.parse(id);
     const loc = flowEdgeLoc(fc, id, from, to);
     const locs = fc.locs || {};
-    const nodeById = new Map((fc.nodes || []).map(node => [node.id, node]));
     const fromNode = nodeById.get(from);
     const toNode = nodeById.get(to);
     const fromDiff = fromNode?.diff || locs[from]?.[2];
     const toDiff = toNode?.diff || locs[to]?.[2];
-    const diff = edge.diff || loc?.[2] || inferEdgeDiff({ diff: fromDiff }, { diff: toDiff });
+    const diff = fc.edgeLocs !== undefined
+      ? (loc?.[2] || 'unchanged')
+      : (edge.diff || inferEdgeDiff({ diff: fromDiff }, { diff: toDiff }));
 
     addClass(el, 'cg-edge');
     el.setAttribute('data-edge-id', id);
@@ -207,7 +214,7 @@
       if (!edgeById.has(id)) throw new Error(`Missing or unknown Mermaid edge marker: ${id || '(empty)'}`);
       seenEdges.add(id);
       lineCounts.set(id, lineCounts.get(id) || 0);
-      lineCounts.set(id, lineCounts.get(id) + markEdgeGroup(el, fc, edgeById, edgeGroups));
+      lineCounts.set(id, lineCounts.get(id) + markEdgeGroup(el, fc, edgeById, edgeGroups, nodeById));
     }
     for (const id of edgeById.keys()) {
       if (!seenEdges.has(id) || !lineCounts.get(id)) throw new Error(`Missing Mermaid edge marker or line: ${id}`);
@@ -570,7 +577,7 @@
     return best ? EXT_LANG[best] : null;
   }
 
-  function showCodeInPane(file, line) {
+  function showCodeInPane(file, line, status) {
     const pane = document.getElementById('code-pane');
     const header = document.getElementById('code-pane-header');
     const body = document.getElementById('code-pane-body');
@@ -581,8 +588,8 @@
       header.textContent = text;
     }
 
-    if (data.diff?.files?.[file]?.status === 'deleted') {
-      renderDiffView(file, line, '');
+    if (data.diff?.files?.[file] && (status === 'removed' || data.diff.files[file].status === 'deleted')) {
+      renderDiffView(file, line, files[file] || '', status);
       return;
     }
     if (!Object.prototype.hasOwnProperty.call(files, file)) {
@@ -595,14 +602,19 @@
 
     // Review mode: render a git-diff-like unified view when diff data exists.
     if (data.diff?.files?.[file]) {
-      renderDiffView(file, line, text);
+      renderDiffView(file, line, text, status);
       return;
     }
 
     renderFileView(file, line, text);
   }
 
+  function normalizeNewlines(text) {
+    return text.replace(/\r\n?/g, '\n');
+  }
+
   function renderFileView(file, line, text) {
+    text = normalizeNewlines(text);
     const header = document.getElementById('code-pane-header');
     const body = document.getElementById('code-pane-body');
     const lang = langForFile(file);
@@ -645,8 +657,8 @@
   }
 
   function buildUnifiedDiff(baseText, headText, addedLines, removedLines) {
-    const oldLines = baseText.split('\n');
-    const newLines = headText.split('\n');
+    const oldLines = normalizeNewlines(baseText).split('\n');
+    const newLines = normalizeNewlines(headText).split('\n');
     const addedSet = new Set(addedLines);
     const removedSet = new Set(removedLines);
     const rows = [];
@@ -691,11 +703,12 @@
     return { rows, hunks };
   }
 
-  function renderDiffView(file, targetLine, headText) {
+  function renderDiffView(file, targetLine, headText, locationStatus) {
     const header = document.getElementById('code-pane-header');
     const body = document.getElementById('code-pane-body');
     const diffInfo = data.diff.files[file];
-    const baseText = diffInfo.baseText || '';
+    const baseText = normalizeNewlines(diffInfo.baseText || '');
+    const targetSide = locationStatus === 'removed' ? 'oldN' : 'newN';
     const status = diffInfo.status;
 
     if (status === 'deleted') {
@@ -724,12 +737,13 @@
     );
 
     if (hunks.length === 0) {
-      renderFileView(file, targetLine, headText);
+      renderFileView(file, targetLine, targetSide === 'oldN' ? baseText : headText);
+      if (targetSide === 'oldN') header.textContent = `${file} · base line ${targetLine}`;
       return;
     }
 
     // Include the selected anchor even when it falls in omitted context.
-    const targetIndex = rows.findIndex(row => row.newN === targetLine);
+    const targetIndex = rows.findIndex(row => row[targetSide] === targetLine);
     if (targetIndex >= 0 && !hunks.some(h => targetIndex >= h.startRow && targetIndex <= h.endRow)) {
       hunks.push({ startRow: Math.max(0, targetIndex - 3), endRow: Math.min(rows.length - 1, targetIndex + 3) });
       hunks.sort((a, b) => a.startRow - b.startRow);
@@ -740,7 +754,7 @@
         } else i++;
       }
     }
-    header.textContent = `${file} \u00b7 line ${targetLine} \u00b7 diff (${hunks.length} hunk${hunks.length > 1 ? 's' : ''})`;
+    header.textContent = `${file} \u00b7 ${targetSide === 'oldN' ? 'base line' : 'line'} ${targetLine} \u00b7 diff (${hunks.length} hunk${hunks.length > 1 ? 's' : ''})`;
 
     const frag = document.createDocumentFragment();
     let targetRow = null;
@@ -786,7 +800,7 @@
         div.appendChild(content);
         frag.appendChild(div);
 
-        if (targetRow === null && row.newN === targetLine) {
+        if (targetRow === null && row[targetSide] === targetLine) {
           div.classList.add('cg-current-line');
           targetRow = div;
         }
