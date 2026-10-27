@@ -2,6 +2,8 @@
   "name": "codegraph-vendor-build",
   "private": true,
   "scripts": {
+    "test": "npm run test:scripts",
+    "test:scripts": "node skill/CodeGraph/scripts/_smoke-parser.mjs && node skill/CodeGraph/scripts/_smoke-validate.mjs && node skill/CodeGraph/scripts/_smoke-diff-status.mjs && node --test skill/CodeGraph/scripts/_smoke-build.mjs skill/CodeGraph/scripts/_smoke-locations.mjs skill/CodeGraph/scripts/_smoke-cli.mjs",
     "build:mermaid": "node skill/CodeGraph/scripts/build-mermaid.mjs"
   },
   "devDependencies": {

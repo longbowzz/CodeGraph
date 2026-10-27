@@ -30,6 +30,9 @@ function parseArgs(argv) {
     else if (a === '-h' || a === '--help') {
       console.error('Usage: validate.mjs --mmd <path> --locs <path> --repo <repo-root>');
       process.exit(2);
+    } else {
+      console.error(`Unknown arg: ${a}`);
+      process.exit(2);
     }
   }
   if (!args.mmd || !args.locs || !args.repo) {
