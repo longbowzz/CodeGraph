@@ -1,0 +1,11 @@
+{
+  "name": "codegraph-vendor-build",
+  "private": true,
+  "scripts": {
+    "build:mermaid": "node skill/CodeGraph/scripts/build-mermaid.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "mermaid": "11.12.0"
+  }
+}

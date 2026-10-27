@@ -74,8 +74,14 @@
     const file = Array.isArray(loc) ? loc[0] : loc.file;
     const line = Array.isArray(loc) ? loc[1] : loc.line;
     if (!file || !line) return;
+    const status = Array.isArray(loc) ? loc[2] : loc.status;
+    if (status === 'removed' && !editors[currentEditor].inPage) {
+      currentEditor = 'web';
+      editorSel.value = 'web';
+      applyWebMode();
+    }
     if (editors[currentEditor].inPage) {
-      showCodeInPane(file, line);
+      showCodeInPane(file, line, status);
       return;
     }
     const p = absPath(file);
@@ -86,486 +92,225 @@
   }
 
   // ============================================================
-  // FLOWCHART RENDERING (uses dagre)
+  // MERMAID RENDERING
   // ============================================================
+  const SVG_NS = 'http://www.w3.org/2000/svg';
 
-  // CJK / full-width char detection for width estimation.
-  // Covers CJK Unified, CJK punctuation, full-width forms, Hiragana, Katakana, Hangul.
-  const CJK_RE = /[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef\uac00-\ud7af]/;
-
-  // Estimate rendered width of a string at 13px font.
-  // CJK / full-width chars ≈ 14px; ASCII ≈ 7px; other Latin ≈ 8px.
-  function estimateTextWidth(s) {
-    let w = 0;
-    for (const c of s) {
-      if (CJK_RE.test(c)) w += 14;
-      else if (/[a-z0-9]/.test(c)) w += 7;
-      else if (/[A-Z]/.test(c)) w += 9;
-      else if (c === ' ') w += 4;
-      else w += 8; // punctuation
-    }
-    return w;
+  function flowEdgeLoc(fc, id, from, to) {
+    if (fc.edgeLocs !== undefined) return fc.edgeLocs[id];
+    return fc.locs?.[from] || fc.locs?.[to];
   }
 
-  // Drop interior waypoints that sit (near-)on the line between their neighbors.
-  // Dagre emits one waypoint per rank crossed, so long edges carry dozens of
-  // collinear middle points. Feeding those to Catmull-Rom directly produces a
-  // "recurve bow" — a straight middle with opposite-curving ends — because the
-  // uneven spacing skews the tangent estimates. Simplifying first lets the
-  // smoothing see only real bends, so the curve reads as one cohesive whole.
-  function simplifyPoints(points, eps = 0.75) {
-    if (!points || points.length <= 2) return points || [];
-    const out = [points[0]];
-    for (let i = 1; i < points.length - 1; i++) {
-      const a = out[out.length - 1];
-      const b = points[i];
-      const c = points[i + 1];
-      const dx = c.x - a.x, dy = c.y - a.y;
-      const segLen = Math.hypot(dx, dy);
-      // Perpendicular distance from b to line a→c = |(b-a) × (c-a)| / |c-a|
-      const cross = (b.x - a.x) * dy - (b.y - a.y) * dx;
-      const dist = segLen > 1e-6 ? Math.abs(cross) / segLen : 0;
-      if (dist > eps) out.push(b);
-    }
-    out.push(points[points.length - 1]);
-    return out;
-  }
-
-  // Snap a point on a node's boundary to the nearest of four fixed anchors.
-  // For rect/terminal/storage these are the side midpoints; for the decision
-  // diamond they are the vertices. Both share the same coordinates:
-  //   top (cx, y)   bottom (cx, y+h)   left (x, cy)   right (x+w, cy)
-  // Direction-from-center decides which anchor wins, so each node always has
-  // a predictable in/out point regardless of where dagre's router landed.
-  function anchorFor(node, pt) {
-    const cx = node.x, cy = node.y;
-    const w2 = node.width / 2, h2 = node.height / 2;
-    const dx = pt.x - cx, dy = pt.y - cy;
-    if (Math.abs(dx) > Math.abs(dy)) {
-      return { x: dx > 0 ? cx + w2 : cx - w2, y: cy };
-    }
-    return { x: cx, y: dy >= 0 ? cy + h2 : cy - h2 };
-  }
-
-  // Convert an array of {x,y} points (dagre edge waypoints) to a smooth SVG
-  // path using centripetal Catmull-Rom → cubic Bezier conversion. Centripetal
-  // (α=0.5) parameterization avoids the cusps and overshoot that uniform CR
-  // produces on unevenly-spaced points, giving Mermaid-like flowing curves.
-  function smoothPathThrough(rawPoints) {
-    const points = simplifyPoints(rawPoints);
-    if (!points || points.length === 0) return '';
-    if (points.length === 1) return `M${points[0].x},${points[0].y}`;
-    if (points.length === 2) {
-      return `M${points[0].x},${points[0].y} L${points[1].x},${points[1].y}`;
-    }
-    let d = `M${points[0].x.toFixed(1)},${points[0].y.toFixed(1)}`;
-    for (let i = 0; i < points.length - 1; i++) {
-      const p0 = points[i - 1] || points[i];
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const p3 = points[i + 2] || p2;
-      // Centripetal distances (α=0.5): sqrt of segment length.
-      const s01 = Math.max(1e-3, Math.hypot(p1.x - p0.x, p1.y - p0.y) ** 0.5);
-      const s12 = Math.max(1e-3, Math.hypot(p2.x - p1.x, p2.y - p1.y) ** 0.5);
-      const s23 = Math.max(1e-3, Math.hypot(p3.x - p2.x, p3.y - p2.y) ** 0.5);
-      // Hermite tangents at p1 and p2 (central differences, scaled by centripetal weights).
-      const m1x = ((p2.x - p1.x) * s01 + (p1.x - p0.x) * s12) / (s01 + s12);
-      const m1y = ((p2.y - p1.y) * s01 + (p1.y - p0.y) * s12) / (s01 + s12);
-      const m2x = ((p3.x - p2.x) * s12 + (p2.x - p1.x) * s23) / (s12 + s23);
-      const m2y = ((p3.y - p2.y) * s12 + (p2.y - p1.y) * s23) / (s12 + s23);
-      // Hermite → cubic Bezier: cp1 = p1 + m1/3, cp2 = p2 - m2/3.
-      const cp1x = p1.x + m1x / 3;
-      const cp1y = p1.y + m1y / 3;
-      const cp2x = p2.x - m2x / 3;
-      const cp2y = p2.y - m2y / 3;
-      d += ` C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`;
-    }
-    return d;
-  }
-
-  // Review-mode: infer an edge's diff status from its endpoint nodes.
-  // Priority: added > removed > modified > unchanged. Returns undefined if
-  // neither endpoint carries a diff status (non-review build).
   function inferEdgeDiff(a, b) {
     const order = { added: 4, removed: 3, modified: 2, unchanged: 1 };
     const ax = a && order[a.diff] ? a.diff : null;
     const bx = b && order[b.diff] ? b.diff : null;
     if (!ax && !bx) return null;
-    const aRank = ax ? order[ax] : 0;
-    const bRank = bx ? order[bx] : 0;
-    return aRank >= bRank ? ax : bx;
+    return (ax && order[ax] || 0) >= (bx && order[bx] || 0) ? ax : bx;
   }
 
-  function renderFlowchart(svg, fc) {
-    const g = new dagre.graphlib.Graph();
-    g.setGraph({ rankdir: fc.direction === 'LR' ? 'LR' : 'TB', nodesep: 50, ranksep: 70, marginx: 20, marginy: 20 });
-    g.setDefaultEdgeLabel(() => ({}));
-
-    for (const n of fc.nodes) {
-      const loc = fc.locs && fc.locs[n.id];
-      const label = n.label != null ? n.label : n.id;
-      const lines = String(label).split('\n');
-      // CJK-aware size estimation; comfortable padding so text never overflows.
-      const widest = Math.max(...lines.map(s => estimateTextWidth(s)));
-      const w = Math.max(120, widest + 40);     // 20px padding each side
-      const h = Math.max(44, lines.length * 20 + 20); // 10px padding top/bottom
-      g.setNode(n.id, { width: w, height: h, _meta: { ...n, location: loc, diff: loc && loc[2] } });
-    }
-    for (const e of fc.edges) {
-      g.setEdge(e.from, e.to, {
-        _meta: e,
-        width: e.label ? estimateTextWidth(String(e.label)) + 12 : 0,
-        height: e.label ? 22 : 0,
-        labelpos: 'c',
-      });
-    }
-
-    dagre.layout(g);
-
-    // Compute bounding box
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    g.nodes().forEach(id => {
-      const nd = g.node(id);
-      minX = Math.min(minX, nd.x - nd.width / 2);
-      minY = Math.min(minY, nd.y - nd.height / 2);
-      maxX = Math.max(maxX, nd.x + nd.width / 2);
-      maxY = Math.max(maxY, nd.y + nd.height / 2);
-    });
-    g.edges().forEach(e => {
-      const ed = g.edge(e);
-      ed.points.forEach(pt => {
-        minX = Math.min(minX, pt.x); minY = Math.min(minY, pt.y);
-        maxX = Math.max(maxX, pt.x); maxY = Math.max(maxY, pt.y);
-      });
-    });
-    const pad = 20;
-    minX -= pad; minY -= pad; maxX += pad; maxY += pad;
-
-    const vbX = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    vbX.setAttribute('class', 'cg-viewport');
-    svg.appendChild(vbX);
-
-
-    // Edges first (so nodes draw over)
-    const labelLayer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    vbX.appendChild(labelLayer);
-    const labelBoxes = [];
-    const nodeBoxes = g.nodes().map(id => {
-      const n = g.node(id);
-      return { x: n.x - n.width / 2, y: n.y - n.height / 2, width: n.width, height: n.height };
-    });
-    const overlaps = (a, b) => a.x < b.x + b.width + 4 && a.x + a.width + 4 > b.x &&
-      a.y < b.y + b.height + 4 && a.y + a.height + 4 > b.y;
-    g.edges().forEach(e => {
-      const ed = g.edge(e);
-      const meta = ed._meta;
-      const grp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      grp.setAttribute('class', 'cg-edge' + (meta.style === 'dashed' ? ' cg-dashed' : ''));
-      grp.setAttribute('data-from', e.v);
-      grp.setAttribute('data-to', e.w);
-      const loc = fc.locs && (fc.locs[e.v] || fc.locs[e.w]);
-      grp.setAttribute('data-loc', loc ? 'true' : 'false');
-      const edgeDiff = inferEdgeDiff(g.node(e.v)?._meta, g.node(e.w)?._meta);
-      if (edgeDiff) grp.setAttribute('data-diff', edgeDiff);
-      // Snap endpoints to fixed anchors on the node boundary:
-      //   rect/terminal/storage → midpoint of the nearest side
-      //   decision (diamond)    → nearest vertex
-      // Both shapes share the same four anchor coordinates, so one formula
-      // covers everything. Direction-from-center picks which anchor, so the
-      // edge always leaves from a consistent point instead of drifting along
-      // the boundary.
-      const pts = ed.points.slice();
-      const srcNode = g.node(e.v);
-      const tgtNode = g.node(e.w);
-      if (srcNode && pts.length > 0) pts[0] = anchorFor(srcNode, pts[0]);
-      if (tgtNode && pts.length > 1) pts[pts.length - 1] = anchorFor(tgtNode, pts[pts.length - 1]);
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      // Use smooth Catmull-Rom curves through dagre's waypoints.
-      path.setAttribute('d', smoothPathThrough(pts));
-      if (meta.style === 'dashed') path.style.strokeDasharray = '5 3';
-      path.setAttribute('class', 'cg-edge-line');
-      const hit = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      hit.setAttribute('class', 'cg-edge-hit');
-      hit.setAttribute('d', path.getAttribute('d'));
-      grp.appendChild(hit);
-      grp.appendChild(path);
-      vbX.insertBefore(grp, labelLayer);
-      const length = path.getTotalLength();
-      const end = path.getPointAtLength(length);
-      const beforeEnd = path.getPointAtLength(Math.max(0, length - 1));
-      const angle = Math.atan2(end.y - beforeEnd.y, end.x - beforeEnd.x) * 180 / Math.PI;
-      const tipGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      tipGroup.setAttribute('transform', `translate(${end.x},${end.y}) rotate(${angle})`);
-      const tip = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-      tip.setAttribute('class', 'cg-edge-tip');
-      tip.setAttribute('points', '0,0 -8,-4 -8,4');
-      tipGroup.appendChild(tip);
-      grp.appendChild(tipGroup);
-      if (meta.label) {
-        const labelGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        for (const attr of ['class', 'data-from', 'data-to', 'data-loc', 'data-diff']) {
-          if (grp.hasAttribute(attr)) labelGroup.setAttribute(attr, grp.getAttribute(attr));
-        }
-        labelLayer.appendChild(labelGroup);
-        for (const element of [grp, labelGroup]) {
-          element.addEventListener('pointerenter', () => {
-            grp.classList.add('cg-edge-hover');
-            labelGroup.classList.add('cg-edge-hover');
-          });
-          element.addEventListener('pointerleave', () => {
-            grp.classList.remove('cg-edge-hover');
-            labelGroup.classList.remove('cg-edge-hover');
-          });
-        }
-        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('text-anchor', 'middle');
-        text.setAttribute('dominant-baseline', 'central');
-        text.textContent = meta.label;
-        labelGroup.appendChild(text);
-        const measured = text.getBBox();
-        // Search around the actual curve midpoint, never drift toward endpoints.
-        let best = null;
-        for (const fraction of [0.5, 0.45, 0.55, 0.4, 0.6]) {
-          const distance = length * fraction;
-          const point = path.getPointAtLength(distance);
-          const prev = path.getPointAtLength(Math.max(0, distance - 1));
-          const next = path.getPointAtLength(Math.min(length, distance + 1));
-          const norm = Math.hypot(next.x - prev.x, next.y - prev.y) || 1;
-          for (const offset of [0, 20, -20, 40, -40, 60, -60]) {
-            const x = point.x - (next.y - prev.y) / norm * offset;
-            const y = point.y + (next.x - prev.x) / norm * offset;
-            const box = { x: x + measured.x - 4, y: y + measured.y - 3, width: measured.width + 8, height: measured.height + 6 };
-            const nodeHits = nodeBoxes.filter(other => overlaps(box, other)).length;
-            const labelHits = labelBoxes.filter(other => overlaps(box, other)).length;
-            const score = nodeHits * 100000 + labelHits * 10000 + Math.abs(offset) + Math.abs(fraction - 0.5) * length;
-            if (!best || score < best.score) best = { x, y, box, score };
-          }
-        }
-        text.setAttribute('x', best.x);
-        text.setAttribute('y', best.y);
-        const box = best.box;
-        labelBoxes.push(box);
-        const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        bg.setAttribute('class', 'cg-edge-label-bg');
-        bg.setAttribute('x', box.x);
-        bg.setAttribute('y', box.y);
-        bg.setAttribute('width', box.width);
-        bg.setAttribute('height', box.height);
-        bg.setAttribute('rx', 3);
-        labelGroup.insertBefore(bg, text);
-        minX = Math.min(minX, box.x - 8); minY = Math.min(minY, box.y - 7);
-        maxX = Math.max(maxX, box.x + box.width + 8);
-        maxY = Math.max(maxY, box.y + box.height + 7);
-      }
-    });
-
-    // Nodes
-    g.nodes().forEach(id => {
-      const nd = g.node(id);
-      const meta = nd._meta;
-      const grp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      grp.setAttribute('class', 'cg-node');
-      grp.setAttribute('data-id', id);
-      grp.setAttribute('data-shape', meta.shape || 'normal');
-      grp.setAttribute('data-loc', meta.location ? 'true' : 'false');
-      if (meta.diff) grp.setAttribute('data-diff', meta.diff);
-      const cx = nd.x, cy = nd.y, w = nd.width, h = nd.height;
-      const x = cx - w / 2, y = cy - h / 2;
-      const shape = meta.shape || 'normal';
-      if (shape === 'normal') {
-        const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        r.setAttribute('x', x); r.setAttribute('y', y);
-        r.setAttribute('width', w); r.setAttribute('height', h);
-        r.setAttribute('rx', 4);
-        grp.appendChild(r);
-      } else if (shape === 'decision') {
-        const p = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-        p.setAttribute('points', `${cx},${y} ${x + w},${cy} ${cx},${y + h} ${x},${cy}`);
-        grp.appendChild(p);
-      } else if (shape === 'terminal') {
-        // Stadium: rounded rect with rx=h/2
-        const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        r.setAttribute('x', x); r.setAttribute('y', y);
-        r.setAttribute('width', w); r.setAttribute('height', h);
-        r.setAttribute('rx', h / 2);
-        grp.appendChild(r);
-      } else if (shape === 'storage') {
-        // Cylinder: rect with curved top/bottom (simplified as rect + ellipse top)
-        const r = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        const ey = 4;
-        r.setAttribute('d',
-          `M ${x},${y + ey}` +
-          ` A ${w / 2},${ey} 0 0 1 ${x + w},${y + ey}` +
-          ` L ${x + w},${y + h - ey}` +
-          ` A ${w / 2},${ey} 0 0 1 ${x},${y + h - ey}` +
-          ` Z`
-        );
-        grp.appendChild(r);
-        const top = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
-        top.setAttribute('cx', cx); top.setAttribute('cy', y + ey);
-        top.setAttribute('rx', w / 2); top.setAttribute('ry', ey);
-        top.setAttribute('fill', 'none');
-        grp.appendChild(top);
-      }
-      // Text
-      const labelLines = String(meta.label != null ? meta.label : id).split('\n');
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', cx);
-      text.setAttribute('y', cy - (labelLines.length - 1) * 10);
-      text.setAttribute('text-anchor', 'middle');
-      text.setAttribute('dominant-baseline', 'middle');
-      labelLines.forEach((line, i) => {
-        const tspan = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-        tspan.setAttribute('x', cx);
-        tspan.setAttribute('dy', i === 0 ? 0 : 20);
-        tspan.textContent = line;
-        text.appendChild(tspan);
-      });
-      grp.appendChild(text);
-      vbX.appendChild(grp);
-    });
-
-    return { viewport: vbX, bbox: { x: minX, y: minY, w: maxX - minX, h: maxY - minY } };
+  function diagramSource(name, diagram) {
+    if (typeof diagram.source !== 'string') throw new Error(`Missing Mermaid source for ${name}`);
+    return diagram.source;
   }
 
-  // ============================================================
-  // SEQUENCE RENDERING (hand-rolled)
-  // ============================================================
-  function renderSequence(svg, sq) {
-    const PADX = 40, PADTOP = 60, MSG_GAP_TOP = 36, ROWH = 44, ACTOR_W = 140, ACTOR_H = 36, LIFELINE_BOTTOM_PAD = 40;
-    const actorX = new Map();
-    sq.actors.forEach((a, i) => actorX.set(a.id, PADX + ACTOR_W / 2 + i * (ACTOR_W + 60)));
+  function addClass(el, className) {
+    const classes = new Set((el.getAttribute('class') || '').split(/\s+/).filter(Boolean));
+    classes.add(className);
+    el.setAttribute('class', [...classes].join(' '));
+  }
 
-    // Compute messages y. MSG_GAP_TOP leaves room below the actor headers so
-    // the first message label doesn't collide with the actor boxes.
-    const msgs = sq.messages.map((m, i) => ({ ...m, y: PADTOP + MSG_GAP_TOP + i * ROWH }));
+  function addHitPath(path, className) {
+    const hit = path.cloneNode(false);
+    hit.removeAttribute('id');
+    hit.removeAttribute('style');
+    hit.removeAttribute('data-cg-edge');
+    hit.removeAttribute('marker-start');
+    hit.removeAttribute('marker-end');
+    hit.setAttribute('class', className);
+    path.parentNode.insertBefore(hit, path);
+  }
 
-    const maxBottomY = msgs.length > 0 ? msgs[msgs.length - 1].y : PADTOP;
-    const lifelineBottom = maxBottomY + LIFELINE_BOTTOM_PAD;
-    const totalH = lifelineBottom + 20;
-    const totalW = (sq.actors.length * (ACTOR_W + 60)) + PADX;
+  function viewBoxBounds(root) {
+    const parts = (root.getAttribute('viewBox') || '').trim().split(/[\s,]+/).map(Number);
+    if (parts.length !== 4 || !parts.every(Number.isFinite) || parts[2] <= 0 || parts[3] <= 0) {
+      throw new Error('Mermaid returned SVG without a valid viewBox');
+    }
+    return { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
+  }
 
-    const vbX = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-    vbX.setAttribute('class', 'cg-viewport');
-    svg.appendChild(vbX);
+  function markEdgeGroup(el, fc, edgeById, edgeGroups, nodeById) {
+    const id = el.getAttribute('data-cg-edge');
+    if (el.localName === 'path') {
+      const group = document.createElementNS(SVG_NS, 'g');
+      group.setAttribute('data-cg-edge', id);
+      el.parentNode.insertBefore(group, el);
+      group.appendChild(el);
+      el.removeAttribute('data-cg-edge');
+      el = group;
+    }
+    const edge = edgeById.get(id);
+    if (!edge) throw new Error(`Mermaid returned an unknown edge marker: ${id || '(empty)'}`);
+    const [from, to] = JSON.parse(id);
+    const loc = flowEdgeLoc(fc, id, from, to);
+    const locs = fc.locs || {};
+    const fromNode = nodeById.get(from);
+    const toNode = nodeById.get(to);
+    const fromDiff = fromNode?.diff || locs[from]?.[2];
+    const toDiff = toNode?.diff || locs[to]?.[2];
+    const diff = fc.edgeLocs !== undefined
+      ? (loc?.[2] || 'unchanged')
+      : (edge.diff || inferEdgeDiff({ diff: fromDiff }, { diff: toDiff }));
 
-    const defs = document.createElementNS('http://www.w3.org/2000/svg', 'defs');
-    defs.innerHTML = `
-      <marker id="cg-seq-solid" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#555"/></marker>
-      <marker id="cg-seq-dashed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#888"/></marker>
-      <marker id="cg-seq-async" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5" stroke="#555" stroke-width="2" fill="none"/></marker>
-    `;
-    vbX.appendChild(defs);
+    addClass(el, 'cg-edge');
+    el.setAttribute('data-edge-id', id);
+    el.setAttribute('data-from', from);
+    el.setAttribute('data-to', to);
+    el.setAttribute('data-location-kind', fc.edgeLocs !== undefined ? 'exact' : 'approximate');
+    el.setAttribute('data-loc', loc ? 'true' : 'false');
+    if (diff) el.setAttribute('data-diff', diff);
+    else el.removeAttribute('data-diff');
+    if (!edgeGroups.has(id)) edgeGroups.set(id, []);
+    edgeGroups.get(id).push(el);
 
-    // Actors (top headers)
-    sq.actors.forEach(a => {
-      const x = actorX.get(a.id);
-      const aLoc = sq.locs?.actors?.[a.id];
-      const grp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      grp.setAttribute('class', 'cg-actor');
-      grp.setAttribute('data-id', a.id);
-      grp.setAttribute('data-loc', aLoc ? 'true' : 'false');
-      if (aLoc && aLoc[2]) grp.setAttribute('data-diff', aLoc[2]);
-      const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      r.setAttribute('x', x - ACTOR_W / 2); r.setAttribute('y', PADTOP - ACTOR_H - 12);
-      r.setAttribute('width', ACTOR_W); r.setAttribute('height', ACTOR_H);
-      r.setAttribute('rx', 4);
-      grp.appendChild(r);
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', x);
-      text.setAttribute('y', PADTOP - ACTOR_H / 2 - 12);
-      text.setAttribute('text-anchor', 'middle');
-      text.setAttribute('dominant-baseline', 'middle');
-      text.textContent = a.name;
-      grp.appendChild(text);
-      vbX.appendChild(grp);
-    });
+    const linePaths = [...el.querySelectorAll('path[d]')];
+    for (const path of linePaths) {
+      addClass(path, 'cg-edge-line');
+      addHitPath(path, 'cg-edge-hit');
+    }
+    if (el.querySelector('text, foreignObject')) {
+      for (const rect of el.querySelectorAll('rect')) addClass(rect, 'cg-edge-label-bg');
+    }
+    return linePaths.length;
+  }
 
-    // Lifelines
-    sq.actors.forEach(a => {
-      const x = actorX.get(a.id);
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('class', 'cg-lifeline');
-      line.setAttribute('x1', x); line.setAttribute('y1', PADTOP - 12);
-      line.setAttribute('x2', x); line.setAttribute('y2', lifelineBottom);
-      vbX.appendChild(line);
-    });
-
-    // Messages
-    msgs.forEach((m, i) => {
-      const fromX = actorX.get(m.from);
-      const toX = actorX.get(m.to);
-      const isSelf = m.from === m.to;
-      const mLoc = sq.locs?.messages?.[i];
-      const grp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      let cls = 'cg-msg';
-      if (m.style === 'return') cls += ' cg-return';
-      if (m.style === 'async') cls += ' cg-async';
-      grp.setAttribute('class', cls);
-      grp.setAttribute('data-idx', i);
-      grp.setAttribute('data-loc', mLoc ? 'true' : 'false');
-      if (mLoc && mLoc[2]) grp.setAttribute('data-diff', mLoc[2]);
-
-      if (isSelf) {
-        const loop = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        const offset = 24;
-        loop.setAttribute('class', 'cg-self-loop');
-        loop.setAttribute('d',
-          `M ${fromX},${m.y} L ${fromX + offset},${m.y} L ${fromX + offset},${m.y + 14} L ${fromX},${m.y + 14}`);
-        loop.setAttribute('marker-end', 'url(#cg-seq-solid)');
-        grp.appendChild(loop);
-      } else {
-        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-        const x1 = fromX < toX ? fromX + 1 : fromX - 1;
-        const x2 = fromX < toX ? toX - 1 : toX + 1;
-        path.setAttribute('d', `M ${x1},${m.y} L ${x2},${m.y}`);
-        const marker = m.style === 'return' ? 'cg-seq-dashed' : (m.style === 'async' ? 'cg-seq-async' : 'cg-seq-solid');
-        path.setAttribute('marker-end', `url(#${marker})`);
-        if (m.style === 'return') path.style.strokeDasharray = '5 3';
-        grp.appendChild(path);
-      }
-
-      // Text
-      const midX = (fromX + toX) / 2;
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', midX);
-      text.setAttribute('y', m.y - 6);
-      text.setAttribute('text-anchor', 'middle');
-      text.textContent = m.text;
-      grp.appendChild(text);
-
-      vbX.appendChild(grp);
-    });
-
-    // Notes
-    if (sq.notes) {
-      sq.notes.forEach(n => {
-        const x = actorX.get(n.actor);
-        const grp = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        grp.setAttribute('class', 'cg-note');
-        // Find a y — pick top of diagram for simplicity
-        const y = PADTOP;
-        const w = 100, h = 30;
-        const nx = n.position === 'over' ? x - w / 2 : (n.position === 'left' ? x - w - 10 : x + 10);
-        const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        r.setAttribute('x', nx); r.setAttribute('y', y);
-        r.setAttribute('width', w); r.setAttribute('height', h);
-        grp.appendChild(r);
-        const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        t.setAttribute('x', nx + w / 2);
-        t.setAttribute('y', y + h / 2);
-        t.setAttribute('text-anchor', 'middle');
-        t.setAttribute('dominant-baseline', 'middle');
-        t.textContent = n.text;
-        grp.appendChild(t);
-        vbX.appendChild(grp);
-      });
+  function decorateFlowchart(root, fc) {
+    const nodeById = new Map((fc.nodes || []).map(node => [node.id, node]));
+    const seenNodes = new Set();
+    for (const el of root.querySelectorAll('[data-cg-node]')) {
+      const id = el.getAttribute('data-cg-node');
+      const node = nodeById.get(id);
+      if (!node || seenNodes.has(id)) throw new Error(`Missing or duplicate Mermaid node marker: ${id || '(empty)'}`);
+      seenNodes.add(id);
+      const loc = fc.locs?.[id];
+      addClass(el, 'cg-node');
+      el.setAttribute('data-id', id);
+      el.setAttribute('data-shape', node.shape || 'normal');
+      el.setAttribute('data-loc', loc ? 'true' : 'false');
+      const diff = node.diff || loc?.[2];
+      if (diff) el.setAttribute('data-diff', diff);
+      else el.removeAttribute('data-diff');
+    }
+    for (const id of nodeById.keys()) {
+      if (!seenNodes.has(id)) throw new Error(`Missing Mermaid node marker: ${id}`);
     }
 
-    return {
-      viewport: vbX,
-      bbox: { x: 0, y: 0, w: totalW, h: totalH },
-    };
+    const edgeById = new Map((fc.edges || []).map(edge => [edge.id, edge]));
+    const seenEdges = new Set();
+    const edgeGroups = new Map();
+    const lineCounts = new Map();
+    for (const el of root.querySelectorAll('[data-cg-edge]')) {
+      const id = el.getAttribute('data-cg-edge');
+      if (!edgeById.has(id)) throw new Error(`Missing or unknown Mermaid edge marker: ${id || '(empty)'}`);
+      seenEdges.add(id);
+      lineCounts.set(id, lineCounts.get(id) || 0);
+      lineCounts.set(id, lineCounts.get(id) + markEdgeGroup(el, fc, edgeById, edgeGroups, nodeById));
+    }
+    for (const id of edgeById.keys()) {
+      if (!seenEdges.has(id) || !lineCounts.get(id)) throw new Error(`Missing Mermaid edge marker or line: ${id}`);
+    }
+    for (const groups of edgeGroups.values()) {
+      for (const el of groups) {
+        el.addEventListener('pointerenter', () => {
+          for (const group of groups) group.classList.add('cg-edge-hover');
+        });
+        el.addEventListener('pointerleave', event => {
+          const relatedEdge = event.relatedTarget?.closest?.('.cg-edge[data-edge-id]');
+          if (relatedEdge && groups.includes(relatedEdge)) return;
+          for (const group of groups) group.classList.remove('cg-edge-hover');
+        });
+      }
+    }
+  }
+
+  function decorateSequence(root, sq) {
+    const actorById = new Map((sq.actors || []).map(actor => [actor.id, actor]));
+    const seenActors = new Set();
+    for (const el of root.querySelectorAll('[data-cg-actor]')) {
+      const id = el.getAttribute('data-cg-actor');
+      const actor = actorById.get(id);
+      if (!actor) throw new Error(`Unknown Mermaid actor marker: ${id || '(empty)'}`);
+      seenActors.add(id);
+      const loc = sq.locs?.actors?.[id];
+      addClass(el, 'cg-actor');
+      el.setAttribute('data-id', id);
+      el.setAttribute('data-loc', loc ? 'true' : 'false');
+      const diff = actor.diff || loc?.[2];
+      if (diff) el.setAttribute('data-diff', diff);
+      else el.removeAttribute('data-diff');
+    }
+    for (const id of actorById.keys()) {
+      if (!seenActors.has(id)) throw new Error(`Missing Mermaid actor marker: ${id}`);
+    }
+
+    const messages = sq.messages || [];
+    const seenMessages = new Set();
+    for (const el of root.querySelectorAll('[data-cg-message]')) {
+      const rawIndex = el.getAttribute('data-cg-message');
+      const index = Number(rawIndex);
+      if (!Number.isInteger(index) || index < 0 || index >= messages.length || seenMessages.has(index)) {
+        throw new Error(`Missing or duplicate Mermaid message marker: ${rawIndex || '(empty)'}`);
+      }
+      seenMessages.add(index);
+      const message = messages[index];
+      const loc = sq.locs?.messages?.[index];
+      addClass(el, 'cg-msg');
+      el.setAttribute('data-idx', String(index));
+      el.setAttribute('data-loc', loc ? 'true' : 'false');
+      if (message.style === 'return') addClass(el, 'cg-return');
+      if (message.style === 'async') addClass(el, 'cg-async');
+      const diff = message.diff || loc?.[2];
+      if (diff) el.setAttribute('data-diff', diff);
+      else el.removeAttribute('data-diff');
+      for (const path of el.querySelectorAll('path[d], line')) {
+        addClass(path, 'cg-msg-line');
+        addHitPath(path, 'cg-msg-hit');
+      }
+    }
+    for (let i = 0; i < messages.length; i++) {
+      if (!seenMessages.has(i)) throw new Error(`Missing Mermaid message marker: ${i}`);
+    }
+  }
+
+  async function renderDiagram(name, diagram, svg, theme) {
+    if (!window.CodeGraphMermaid || typeof window.CodeGraphMermaid.render !== 'function') {
+      throw new Error('CodeGraph Mermaid adapter is unavailable');
+    }
+    const result = await window.CodeGraphMermaid.render(`cg-${name}`, diagramSource(name, diagram), {
+      theme,
+      securityLevel: 'strict',
+    });
+    const markup = typeof result === 'string' ? result : result?.svg;
+    if (typeof markup !== 'string') throw new Error('Mermaid adapter returned no SVG');
+    const parsed = new DOMParser().parseFromString(markup, 'image/svg+xml');
+    let root = parsed.documentElement;
+    if (!root || root.localName !== 'svg' || parsed.querySelector('parsererror')) {
+      const html = new DOMParser().parseFromString(markup, 'text/html');
+      root = html.querySelector('svg');
+    }
+    if (!root || root.localName !== 'svg') throw new Error('Mermaid adapter returned invalid SVG');
+    const bbox = viewBoxBounds(root);
+    if (name === 'flowchart') decorateFlowchart(root, diagram);
+    else decorateSequence(root, diagram);
+
+    const viewport = document.createElementNS(SVG_NS, 'g');
+    viewport.setAttribute('class', 'cg-viewport');
+    if (root.id) viewport.id = root.id;
+    const rootClass = root.getAttribute('class');
+    if (rootClass) for (const className of rootClass.split(/\s+/).filter(Boolean)) addClass(viewport, className);
+    while (root.firstChild) viewport.appendChild(document.adoptNode(root.firstChild));
+    svg.replaceChildren(viewport);
+    return { viewport, bbox };
   }
 
   // Review-mode diff legend. Renders inside #cg-diff-legend only when
@@ -599,7 +344,6 @@
   // ============================================================
   // WIRE UP TABS & CANVAS
   // ============================================================
-  const tabsBar = document.getElementById('tabs');
   const fcTab = document.getElementById('tab-flowchart');
   const sqTab = document.getElementById('tab-sequence');
 
@@ -612,27 +356,76 @@
     transforms: {},    // tab-name -> { scale, tx, ty }
   };
 
-  if (data.flowchart) {
-    const r = renderFlowchart(fcSvg, data.flowchart);
-    state.viewports.flowchart = r;
-    state.transforms.flowchart = fitTransform(r.bbox);
-    fcTab.classList.remove('hidden');
-  } else {
-    fcTab.classList.add('hidden');
-    fcSvg.style.display = 'none';
+  const loading = document.getElementById('loading');
+  const renderErrors = new Map();
+
+  function showRenderError(name, error) {
+    const message = `${name === 'flowchart' ? 'Flowchart' : 'Sequence'} render error: ${error.message || error}`;
+    renderErrors.set(name, message);
+    let notice = document.getElementById('cg-render-errors');
+    if (!notice) {
+      notice = document.createElement('div');
+      notice.id = 'cg-render-errors';
+      notice.className = 'cg-render-errors';
+      notice.setAttribute('role', 'alert');
+      document.getElementById('canvas-wrap').appendChild(notice);
+    }
+    notice.hidden = false;
+    notice.textContent = [...renderErrors.values()].join('\n');
   }
 
-  if (data.sequence) {
-    const r = renderSequence(sqSvg, data.sequence);
-    state.viewports.sequence = r;
-    state.transforms.sequence = fitTransform(r.bbox);
-    sqTab.classList.remove('hidden');
-  } else {
-    sqTab.classList.add('hidden');
-    sqSvg.style.display = 'none';
+  function getMermaidTheme() {
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'default';
+  }
+
+  async function renderAvailableDiagrams(theme = getMermaidTheme()) {
+    const jobs = [];
+    for (const [name, diagram, svg, tab] of [
+      ['flowchart', data.flowchart, fcSvg, fcTab],
+      ['sequence', data.sequence, sqSvg, sqTab],
+    ]) {
+      if (!diagram) {
+        tab.classList.add('hidden');
+        svg.style.display = 'none';
+        continue;
+      }
+      jobs.push((async () => {
+        try {
+          const rendered = await renderDiagram(name, diagram, svg, theme);
+          state.viewports[name] = rendered;
+          if (!state.transforms[name]) state.transforms[name] = fitTransform(rendered.bbox);
+          tab.classList.remove('hidden');
+          renderErrors.delete(name);
+          const notice = document.getElementById('cg-render-errors');
+          if (notice) {
+            notice.textContent = [...renderErrors.values()].join('\n');
+            notice.hidden = renderErrors.size === 0;
+          }
+          applyTransform(name);
+        } catch (error) {
+          showRenderError(name, error);
+          tab.classList.add('hidden');
+          svg.style.display = 'none';
+        }
+      })());
+    }
+    await Promise.all(jobs);
+    loading.style.display = 'none';
+    if (!state.current) {
+      if (state.viewports.flowchart) switchTo('flowchart');
+      else if (state.viewports.sequence) switchTo('sequence');
+    }
   }
 
   renderLegend();
+  renderAvailableDiagrams();
+
+  const themePreference = window.matchMedia?.('(prefers-color-scheme: dark)');
+  if (themePreference) {
+    const updateTheme = event => renderAvailableDiagrams(event.matches ? 'dark' : 'default');
+    if (themePreference.addEventListener) themePreference.addEventListener('change', updateTheme);
+    else if (themePreference.addListener) themePreference.addListener(updateTheme);
+  }
 
   function fitTransform(bbox) {
     const wrap = document.getElementById('canvas-wrap');
@@ -663,9 +456,7 @@
   fcTab.addEventListener('click', () => switchTo('flowchart'));
   sqTab.addEventListener('click', () => switchTo('sequence'));
 
-  // Initial view
-  if (data.flowchart) switchTo('flowchart');
-  else if (data.sequence) switchTo('sequence');
+  // Initial view is selected after the asynchronous Mermaid render completes.
 
   // ============================================================
   // ZOOM & PAN
@@ -732,8 +523,8 @@
     }
     const edgeEl = e.target.closest('.cg-edge');
     if (edgeEl) {
-      const locs = data.flowchart.locs || {};
-      const loc = locs[edgeEl.getAttribute('data-from')] || locs[edgeEl.getAttribute('data-to')];
+      const loc = flowEdgeLoc(data.flowchart, edgeEl.getAttribute('data-edge-id'),
+        edgeEl.getAttribute('data-from'), edgeEl.getAttribute('data-to'));
       if (loc) jumpTo(loc);
     }
   });
@@ -753,9 +544,6 @@
       jumpTo(loc);
     }
   });
-
-  // Hide loading state
-  document.getElementById('loading').style.display = 'none';
 
   // ============================================================
   // WEB MODE: in-page code pane + splitter
@@ -789,7 +577,7 @@
     return best ? EXT_LANG[best] : null;
   }
 
-  function showCodeInPane(file, line) {
+  function showCodeInPane(file, line, status) {
     const pane = document.getElementById('code-pane');
     const header = document.getElementById('code-pane-header');
     const body = document.getElementById('code-pane-body');
@@ -800,8 +588,8 @@
       header.textContent = text;
     }
 
-    if (data.diff?.files?.[file]?.status === 'deleted') {
-      renderDiffView(file, line, '');
+    if (data.diff?.files?.[file] && (status === 'removed' || data.diff.files[file].status === 'deleted')) {
+      renderDiffView(file, line, files[file] || '', status);
       return;
     }
     if (!Object.prototype.hasOwnProperty.call(files, file)) {
@@ -814,14 +602,19 @@
 
     // Review mode: render a git-diff-like unified view when diff data exists.
     if (data.diff?.files?.[file]) {
-      renderDiffView(file, line, text);
+      renderDiffView(file, line, text, status);
       return;
     }
 
     renderFileView(file, line, text);
   }
 
+  function normalizeNewlines(text) {
+    return text.replace(/\r\n?/g, '\n');
+  }
+
   function renderFileView(file, line, text) {
+    text = normalizeNewlines(text);
     const header = document.getElementById('code-pane-header');
     const body = document.getElementById('code-pane-body');
     const lang = langForFile(file);
@@ -864,8 +657,8 @@
   }
 
   function buildUnifiedDiff(baseText, headText, addedLines, removedLines) {
-    const oldLines = baseText.split('\n');
-    const newLines = headText.split('\n');
+    const oldLines = normalizeNewlines(baseText).split('\n');
+    const newLines = normalizeNewlines(headText).split('\n');
     const addedSet = new Set(addedLines);
     const removedSet = new Set(removedLines);
     const rows = [];
@@ -910,11 +703,12 @@
     return { rows, hunks };
   }
 
-  function renderDiffView(file, targetLine, headText) {
+  function renderDiffView(file, targetLine, headText, locationStatus) {
     const header = document.getElementById('code-pane-header');
     const body = document.getElementById('code-pane-body');
     const diffInfo = data.diff.files[file];
-    const baseText = diffInfo.baseText || '';
+    const baseText = normalizeNewlines(diffInfo.baseText || '');
+    const targetSide = locationStatus === 'removed' ? 'oldN' : 'newN';
     const status = diffInfo.status;
 
     if (status === 'deleted') {
@@ -943,12 +737,13 @@
     );
 
     if (hunks.length === 0) {
-      renderFileView(file, targetLine, headText);
+      renderFileView(file, targetLine, targetSide === 'oldN' ? baseText : headText);
+      if (targetSide === 'oldN') header.textContent = `${file} · base line ${targetLine}`;
       return;
     }
 
     // Include the selected anchor even when it falls in omitted context.
-    const targetIndex = rows.findIndex(row => row.newN === targetLine);
+    const targetIndex = rows.findIndex(row => row[targetSide] === targetLine);
     if (targetIndex >= 0 && !hunks.some(h => targetIndex >= h.startRow && targetIndex <= h.endRow)) {
       hunks.push({ startRow: Math.max(0, targetIndex - 3), endRow: Math.min(rows.length - 1, targetIndex + 3) });
       hunks.sort((a, b) => a.startRow - b.startRow);
@@ -959,7 +754,7 @@
         } else i++;
       }
     }
-    header.textContent = `${file} \u00b7 line ${targetLine} \u00b7 diff (${hunks.length} hunk${hunks.length > 1 ? 's' : ''})`;
+    header.textContent = `${file} \u00b7 ${targetSide === 'oldN' ? 'base line' : 'line'} ${targetLine} \u00b7 diff (${hunks.length} hunk${hunks.length > 1 ? 's' : ''})`;
 
     const frag = document.createDocumentFragment();
     let targetRow = null;
@@ -1005,7 +800,7 @@
         div.appendChild(content);
         frag.appendChild(div);
 
-        if (targetRow === null && row.newN === targetLine) {
+        if (targetRow === null && row[targetSide] === targetLine) {
           div.classList.add('cg-current-line');
           targetRow = div;
         }

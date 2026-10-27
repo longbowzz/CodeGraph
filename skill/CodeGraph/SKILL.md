@@ -15,9 +15,9 @@ you confirm during the alignment step.
 
 ### 0.1 Runtime requirements
 
-The scripts in this skill have **zero npm dependencies at runtime** — they use
-only Node.js standard-library modules (`node:fs`, `node:path`, `node:url`).
-There is no `npm install` step.
+Graph generation and viewing require **no runtime npm install**. The scripts use
+Node.js standard-library modules and the vendored Mermaid engine. Development
+dependencies used to rebuild vendored assets are separate.
 
 Required on the host machine:
 
@@ -27,8 +27,9 @@ Required on the host machine:
   **or** the `web` editor which opens source in an in-page code panel (no
   external editor needed). See §2 Step 1 and §6 for the full list. Non-`web`
   editors must be installed and reachable via their OS URL scheme.
-- **An internet connection is NOT required** at any point after the skill is
-  installed. The dagre layout library is vendored at `vendor/dagre.min.js`.
+- **An internet connection is NOT required** after the skill is installed.
+  The Mermaid engine and supporting assets are vendored under `vendor/`.
+  External images and icons are outside the offline guarantee.
 
 ### 0.2 Skill directory resolution
 
@@ -40,7 +41,7 @@ skill can be installed in one of these locations (check in order):
 3. **Cloned repo**: any directory containing this `SKILL.md` file.
 
 In all cases, the scripts are at `<skill-dir>/scripts/`, templates at
-`<skill-dir>/template/`, and the vendored dagre at `<skill-dir>/vendor/`.
+`<skill-dir>/template/`, and the vendored Mermaid engine and browser assets at `<skill-dir>/vendor/`.
 
 To find the skill dir from a shell:
 
@@ -136,10 +137,22 @@ reasonable interpretation, state it explicitly, and proceed.
    reading code.** Do NOT write or invoke any script that greps, parses, or
    otherwise auto-extracts call relationships. AST/grep helpers are forbidden
    for topology generation.
-2. Produce **two files** in the output directory (see §4 for formats):
-   - `graph.mmd` — topology (Mermaid subset, see §3).
-   - `graph.locs.json` — flat location lookup.
-3. Hand these to the validator (§6). On failure, read the error report, fix,
+2. Read the surrounding source context for every proposed location and verify
+   that it implements the behavior described by the label. A behavior node must
+   point to its actual statement; only an entry/declaration node may point to a
+   definition line. Edges point to the actual caller-side call, publish, branch,
+   or return statement. Sequence messages follow the same actual-occurrence rule.
+   Reusing a location is valid when elements describe the same real statement.
+   Never substitute a convenient function header or invent a location. If one
+   location cannot truthfully express an element, split the diagram or narrow
+   its semantics.
+3. Produce **two files** in the output directory (see §4 for formats):
+   - `graph.mmd` — a flowchart and/or sequence diagram using supported Mermaid syntax (see the Mermaid Support Contract).
+   - `graph.locs.json` — semantic source locations, including every flowchart
+     node and edge using the recommended `flowchart: {nodes, edges}` form.
+4. Hand these to the validator (§9). It checks structure, paths, and line ranges;
+   it cannot prove that natural-language labels match source semantics. You must
+   verify that correspondence by reading code. On failure, read the error report, fix,
    and re-run. **Maximum 3 retry rounds.** If still failing after 3 rounds,
    stop, paste the latest error report to the user, and ask for guidance.
 
@@ -211,10 +224,12 @@ Same as §1, plus any of these keywords: `PR`, `commit`, `diff`, `review`,
 
 ### Removed-node rule
 
-Removed nodes **must** appear in `graph.mmd` and carry `"removed"` status. Their
-loc should point at the closest still-existing file and line (best guess for
-"where it used to be"); if the file is gone, point at the most related existing
-file. This keeps click-to-jump useful.
+For removed behavior, read the old source and diff to verify what disappeared.
+Do not invent a current location or substitute an unrelated surviving statement
+or function header. Include a removed element only when its source reference
+can truthfully express the label within the available source context; otherwise
+split the diagram or narrow its semantics. A guessed nearby line is not semantic
+evidence.
 
 ### Simplification rule
 
@@ -224,70 +239,33 @@ the change fits.
 
 ---
 
-## 4. Mermaid Subset Contract
+## Mermaid Support Contract
 
-**You are restricted to this subset.** Anything outside it will be rejected by
-the validator. The subset is intentionally minimal.
+Mermaid syntax support follows the official Mermaid **11.12.0** engine, fixed
+and vendored with the skill; see `vendor/mermaid-manifest.json` for bundle details. The supported contract is
+the syntax accepted by that engine and representable by CodeGraph's graph model
+and renderer. This is not a promise that every Mermaid diagram type or feature is
+supported. Each `graph.mmd` may contain one `graph` / `flowchart` diagram and/or
+one `sequenceDiagram`; other diagram types are outside this contract.
 
-### 3.0 Default-deny policy
+Common constructs within this boundary include:
 
-**The validator uses a strict allowlist, NOT a denylist.**
+- **Flowcharts:** `graph` / `flowchart` headers in `TD`, `TB`, `BT`, `LR`, or `RL`; commonly used node shapes; labeled
+  and styled edges; chained connections; subgraphs; style and class declarations;
+  quoted labels and multiline labels.
+- **Sequence diagrams:** actor / participant declarations, including implicit
+  participants accepted by Mermaid; message arrows; activation and deactivation;
+  notes; `loop`, `alt`, `opt`, `par`, `critical`, and `break` fragments; `rect`
+  and `box` grouping; and `autonumber`.
 
-- If a keyword, arrow style, shape, or directive is **explicitly listed in an
-  ALLOWED table below**, it is accepted.
-- **Anything else is rejected**, regardless of whether it appears in the
-  "Forbidden" list or not, and regardless of whether standard Mermaid supports
-  it.
-- When in doubt, do not use the feature. If you need to express something the
-  subset cannot express (e.g. parallel branches in sequence, hexagon node),
-  approximate it with the closest allowed form (e.g. use a `loop` block, use a
-  normal rectangle).
-- The "Forbidden" lists below are **non-exhaustive examples** of commonly
-  emitted Mermaid features that the validator rejects; they are not the full
-  set of rejections.
+This list is representative, not an exhaustive feature matrix. Keep Mermaid
+syntax valid for the pinned engine. If a construct is not accepted by validation
+or cannot be represented faithfully in the generated view, simplify the diagram
+or narrow its scope; do not invent source locations or change the meaning to
+work around a display limitation. CodeGraph imposes no arbitrary two-level
+nesting limit on flowcharts or sequence fragments.
 
-### 3.1 Flowchart subset
-
-Header (exactly one):
-
-```
-flowchart TD
-```
-
-or
-
-```
-flowchart LR
-```
-
-Node declarations (one of four shapes only):
-
-| Syntax | Meaning |
-|---|---|
-| `A[label]` | Normal node |
-| `A{label}` | Decision / branch |
-| `A([label])` | Start / end terminal |
-| `A[(label)]` | Storage / external system |
-
-Edge declarations (one of four styles only):
-
-| Syntax | Meaning |
-|---|---|
-| `A --> B` | Solid arrow |
-| `A -->\|text\| B` | Solid arrow with label |
-| `A -.-> B` | Dashed arrow (use for async / return) |
-| `A -.->\|text\| B` | Dashed arrow with label |
-
-**Node ID rules**:
-- Pattern: `[A-Za-z][A-Za-z0-9_]*`
-- Must be unique across the file.
-- Do NOT start with a digit, do NOT contain `-` or `.`.
-
-**Label rules (syntax)**:
-- Avoid `]`, `}`, `|` inside labels. If you must include them, escape as
-  `&#93;`, `&#125;`, `&#124;`.
-- Keep labels concise (ideally ≤ 20 characters; the renderer wraps on `\n`
-  only — long single-line labels make wide boxes).
+### Labels
 
 **Label rules (content — IMPORTANT)**:
 
@@ -323,109 +301,38 @@ The label-content rules apply equally to **sequence message text** and to
 **sequence actor display names** (actor names should be role-based: `Client`,
 `Auth Service`, `数据库` — not raw class names).
 
-**Forbidden in flowcharts** (validator will reject; non-exhaustive — anything
-not in the ALLOWED tables above is rejected):
-- Headers: `graph TD`, `graph LR`, `flowchart TB`, `flowchart BT`,
-  `flowchart RL` (only `flowchart TD` and `flowchart LR` are allowed).
-- Other node shapes: `A(label)` (round), `A((label))` (circle),
-  `A(((label)))` (double circle), `A{{label}}` (hexagon), `A[/label/]`
-  (parallelogram), `A[\label\]` (reverse parallelogram), `A>label]` (async),
-  `A{{label}}`, `A~~~label~~~`, double-pipe markers, etc.
-- Other edge styles: `A -- text --> B` (label outside `|...|` pipes),
-  `A == text ==> B` (thick), `A === B`, `A -> B` (single dash),
-  `A --- B` (no arrowhead), `A <-> B` (bidirectional), `A x-- B`,
-  `A o-- B`, `A -. text .- B`, dotted without arrow, point styles, etc.
-- Structure / directives: `subgraph`, `end` (no subgraphs exist in this subset),
-  `style`, `classDef`, `class`, `linkStyle`, `click`, `id`, `%%` frontmatter
-  (`---` YAML or `%%{init:...}%%`), `accTitle`, `accDescr`, `direction`,
-  `defaultFont*`, etc.
-- Label content: HTML tags `<br>`, `<b>`, Markdown `**bold**`, backticks,
-  quoted labels `A["x"]`, labels containing newlines or `\n`, `<br/>`,
-  Markdown links, `#`-headings.
-- Comments: `%% this is a comment` (no comments allowed; comments are
-  rejected, not stripped).
-- Whitespace tricks: indentation inside subgraph, multi-line statements
-  joined with `\`.
+### Source locations and visual-only constructs
 
-### 3.2 Sequence subset
+`graph.locs.json` maps semantic code elements, not every visual item:
 
-Header (exactly one):
+- Every flowchart node and every flowchart edge has exactly one verified source
+  location. Node IDs and edge identities must match `graph.mmd` exactly; edge
+  mappings cover all edges, including repeated and chain-expanded edges (§4.1).
+- Every sequence actor / participant and every message has a matching verified
+  source location. Message locations follow message-arrow order exactly (§4.2).
+- Subgraph or box groups, notes, and fragment / control-block markers (including
+  branch separators such as `else`, `and`, and `option`) are visual structure;
+  they do not require location entries. They do not replace or weaken the
+  complete mapping required for nodes, edges, actors, and messages.
 
-```
-sequenceDiagram
-```
+Rendering uses Mermaid strict security. Mermaid callbacks and links are not CodeGraph source mappings and must not
+replace or redirect CodeGraph's click-to-source behavior. External images and
+icons are not guaranteed to work offline. External ELK layouts and image / icon
+assets are not bundled. Do not rely on remote assets for essential diagram meaning.
 
-Participants (one line each, **mandatory `as` form**):
-
-```
-participant C as Client
-participant S as Server
-```
-
-Messages (one of four arrow styles only):
-
-| Syntax | Meaning |
-|---|---|
-| `A->>B: text` | Synchronous call |
-| `A-->>B: text` | Return / reply |
-| `A-)B: text` | Async (open arrow) |
-| `A->>A: text` | Self-call |
-
-Notes (optional):
-
-```
-Note left of A: text
-Note right of A: text
-Note over A: text
-```
-
-Control blocks (optional; nested up to 2 levels):
-
-```
-loop description
-    ...
-end
-
-alt condition
-    ...
-else other condition
-    ...
-end
-
-opt condition
-    ...
-end
-```
-
-**Forbidden in sequence** (validator will reject; non-exhaustive — anything not
-in the ALLOWED tables above is rejected):
-- Participants: `participant X` without `as`, `actor X as Y` (`actor` keyword
-  is not allowed), `participant X #color;` (style suffix), undeclared actors
-  used in messages (every actor used in a message MUST be declared).
-- Activation: `activate A`, `deactivate A`, `+`/`-` activation shorthand
-  (`A->>+B: x` / `B-->>-A: y`).
-- Numbering: `autonumber`, `autonumber 5`, `autonumber off`.
-- Visual grouping: `box`, `box Color Title ... end`, `rect rgb(...)`.
-- Links: `links A: {"Label": "url"}`, `link A: ...`.
-- Lifecycle: `create participant B`, `create actor B`, `destroy A`.
-- Other fragments: `par ... and ... end` (parallel), `critical ... option ... end`,
-  `break ... end`.
-- Arrow variants beyond the 4 allowed: `A->B: text` (single `-`),
-  `A-->B: text`, `A--xB: text`, `A-x B: text`, `A-)B: text` with extra dots,
-  `<<->>` (bidirectional), `--x`, `-x`, `-\|`, `--\|`, `~/~`, etc.
-- Notes: `Note over A,B: text` (multi-actor span — only single actor `over`
-  is allowed), `Note over A,B,C:`, `Note left of A,B:`, color suffixes on
-  notes.
-- Comments: `%% comment`.
-- Frontmatter / config: `%%{init:...}%%`, `--- config: ... ---`,
-  `accTitle`, `accDescr`.
+The builder embeds the vendored Mermaid engine and graph assets into a single
+HTML file. The generated HTML has no runtime npm or network dependency.
+Development packages used to rebuild vendored assets are separate from the
+graph-generation and viewer runtime; users do not need `npm install` to generate
+or open a graph.
 
 ---
 
 ## 4. `graph.locs.json` Format
 
-A flat JSON file mapping element identifiers to `[relativeFilePath, lineNumber]`
-or `[relativeFilePath, lineNumber, diffStatus]`.
+A JSON file containing semantic source locations for diagram elements. Each
+location is `[relativeFilePath, lineNumber]` or
+`[relativeFilePath, lineNumber, diffStatus]`.
 
 The optional third element `diffStatus` is used in **review mode** (§3). It must
 be one of:
@@ -439,18 +346,57 @@ When the third element is omitted, the element is treated as `"unchanged"`.
 
 ### 4.1 For flowchart
 
+Recommended form (for `A --> B --> C`):
+
 ```json
 {
-  "A": ["src/handler.ts", 12],
-  "B": ["src/handler.ts", 20, "modified"],
-  "C": ["src/handler.ts", 35, "added"]
+  "flowchart": {
+    "nodes": {
+      "A": ["src/handler.ts", 12],
+      "B": ["src/handler.ts", 20, "modified"],
+      "C": ["src/handler.ts", 35, "added"]
+    },
+    "edges": [
+      {"from": "A", "to": "B", "occurrence": 1, "loc": ["src/handler.ts", 15]},
+      {"from": "B", "to": "C", "occurrence": 1, "loc": ["src/handler.ts", 28, "added"]}
+    ]
+  }
 }
 ```
 
-Keys = node IDs from `graph.mmd`. Values = 2- or 3-element arrays:
+For a single flowchart, the unwrapped `{ "nodes": {...}, "edges": [...] }`
+form is also accepted. `nodes` keys must exactly match the node IDs in
+`graph.mmd`. Every edge MUST have exactly one matching location record in the
+new format, including unlabeled, dashed, repeated, and chain-expanded edges;
+partial coverage and orphan records are invalid.
+
+An edge's identity is **`JSON.stringify([from, to, occurrence])`**.
+`occurrence` is a **1-based counter per directed endpoint pair**, assigned in
+`graph.mmd` order, expanding chains left to right. For `A --> B --> A` followed
+by `A --> B`, the identities are `["A","B",1]`, `["B","A",1]`, and
+`["A","B",2]`. Unrelated edges do not change these counters; labels and styles
+are not part of identity. Reordering edges with the same directed endpoints
+requires regenerating their location records together with the Mermaid.
+
+Each node value and edge `loc` is a 2- or 3-element array:
 1. File path **relative to repo root**. Use `/` as separator. No `./` prefix.
-2. Line number (1-based positive integer).
+2. Line number (1-based positive integer within the file).
 3. (optional) Diff status: `"added"`, `"modified"`, `"removed"`, or `"unchanged"`.
+
+Node locations identify the actual statement implementing the label's behavior;
+only entry/declaration nodes may use a definition line. Edge locations identify
+the caller-side call, publish, branch, or return where the relationship actually
+occurs, rather than the callee's definition. Multiple elements may share a
+location when they describe the same real statement. Read context to verify
+this; do not fabricate lines or use function headers as substitutes. If a single
+location cannot express the meaning faithfully, split the diagram or narrow the
+label's semantics.
+
+**Legacy compatibility:** the old flat node map `{ "A": [file, line], ... }`
+(and that map inside the `flowchart` wrapper) remains readable. Its edges use an
+**approximate source fallback**, not an explicit semantic edge location. Use the
+new fully covered `nodes`/`edges` format for generation; legacy fallback does not
+relax the new format's full-edge-coverage requirement.
 
 ### 4.2 For sequence
 
@@ -462,19 +408,26 @@ Keys = node IDs from `graph.mmd`. Values = 2- or 3-element arrays:
     "A": ["src/auth.ts", 1]
   },
   "messages": [
-    ["src/server.ts", 35],
-    ["src/auth.ts", 12, "modified"],
+    ["src/client.ts", 18],
+    ["src/server.ts", 35, "modified"],
     ["src/auth.ts", 25],
     ["src/server.ts", 50]
   ]
 }
 ```
 
-- `actors` keys = participant IDs from `sequenceDiagram`.
+- `actors` keys must exactly match every actor / participant ID in `sequenceDiagram`, including implicitly declared participants.
 - `messages` is a **flat array in the order messages appear in `graph.mmd`**.
   Each entry = `[file, line]` or `[file, line, status]`. The array length MUST
-  equal the number of message arrows in `graph.mmd`. Notes and control-block
-  headers do not count.
+  equal the number of message arrows in `graph.mmd`. Notes, groups, and fragment
+  markers / separators (such as `else`, `and`, and `option`) are visual-only and
+  do not need locations or count as messages.
+- Message locations point to the actual sending-side call/publish or returning
+  statement, including self-calls; never use a receiver's definition as a proxy.
+  Read the surrounding code to confirm the message text matches the statement.
+  Locations may repeat when messages refer to the same real statement. If one
+  location cannot express a message truthfully, split the diagram or narrow its
+  semantics. Actor locations may identify their actual entry/declaration.
 
 ---
 
@@ -497,7 +450,9 @@ Keys = node IDs from `graph.mmd`. Values = 2- or 3-element arrays:
 ## 6. Paired Examples
 
 These three examples are the **specification by example**. Match their
-structure exactly.
+structure exactly. Paths and lines illustrate hypothetical source statements;
+when generating a real diagram, read the actual code and replace every location
+with a verified semantic reference.
 
 ### Example 1 — Flowchart only
 
@@ -517,12 +472,24 @@ flowchart TD
 
 ```json
 {
-  "A": ["src/handler.ts", 12],
-  "B": ["src/handler.ts", 20],
-  "C": ["src/handler.ts", 35],
-  "D": ["src/auth.ts", 8],
-  "E": ["src/auth.ts", 45],
-  "F": ["src/audit.ts", 4]
+  "flowchart": {
+    "nodes": {
+      "A": ["src/handler.ts", 12],
+      "B": ["src/handler.ts", 20],
+      "C": ["src/handler.ts", 35],
+      "D": ["src/auth.ts", 8],
+      "E": ["src/auth.ts", 45],
+      "F": ["src/audit.ts", 4]
+    },
+    "edges": [
+      {"from": "A", "to": "B", "occurrence": 1, "loc": ["src/handler.ts", 20]},
+      {"from": "B", "to": "C", "occurrence": 1, "loc": ["src/handler.ts", 21]},
+      {"from": "B", "to": "D", "occurrence": 1, "loc": ["src/handler.ts", 25]},
+      {"from": "D", "to": "E", "occurrence": 1, "loc": ["src/handler.ts", 28]},
+      {"from": "E", "to": "C", "occurrence": 1, "loc": ["src/handler.ts", 35]},
+      {"from": "C", "to": "F", "occurrence": 1, "loc": ["src/handler.ts", 36]}
+    ]
+  }
 }
 ```
 
@@ -552,8 +519,8 @@ sequenceDiagram
     "A": ["src/auth.ts", 1]
   },
   "messages": [
+    ["src/client.ts", 18],
     ["src/server.ts", 35],
-    ["src/auth.ts", 12],
     ["src/auth.ts", 25],
     ["src/server.ts", 48],
     ["src/server.ts", 50]
@@ -565,8 +532,8 @@ sequenceDiagram
 
 When the user asks for both `flowchart` and `sequence`, **combine them in a
 single `graph.mmd`**, separated by a blank line. The two diagrams share a
-single `graph.locs.json` that uses both the flat form (for flowchart) and the
-nested form (for sequence). To disambiguate, use the nested form:
+single `graph.locs.json` with `flowchart` and `sequence` wrappers. The flowchart
+wrapper contains `nodes` and a fully covered `edges` array:
 
 ```
 graph.mmd:
@@ -587,9 +554,15 @@ sequenceDiagram
 ```json
 {
   "flowchart": {
-    "A": ["src/main.ts", 5],
-    "B": ["src/validate.ts", 12],
-    "C": ["src/handle.ts", 30]
+    "nodes": {
+      "A": ["src/main.ts", 5],
+      "B": ["src/validate.ts", 12],
+      "C": ["src/handle.ts", 35]
+    },
+    "edges": [
+      {"from": "A", "to": "B", "occurrence": 1, "loc": ["src/main.ts", 8]},
+      {"from": "B", "to": "C", "occurrence": 1, "loc": ["src/main.ts", 10]}
+    ]
   },
   "sequence": {
     "actors": {
@@ -597,17 +570,18 @@ sequenceDiagram
       "B": ["src/handle.ts", 30]
     },
     "messages": [
-      ["src/handle.ts", 35],
+      ["src/main.ts", 10],
       ["src/handle.ts", 60]
     ]
   }
 }
 ```
 
-> If `graph.mmd` contains only a flowchart, `graph.locs.json` uses the flat
-> form (§4.1). If it contains only a sequence, use the nested `actors`/`messages`
-> form (§4.2). If it contains both, use the `flowchart`/`sequence` wrapper form
-> shown in Example 3.
+> For a flowchart alone, prefer the `flowchart: {nodes, edges}` wrapper (§4.1);
+> unwrapped `{nodes, edges}` is also accepted. For a sequence alone, use
+> `actors`/`messages` (§4.2). For both, use the `flowchart`/`sequence` wrappers
+> shown in Example 3. Old flat node maps are legacy input only; their edge
+> navigation is an approximate source fallback.
 
 ---
 
@@ -615,21 +589,33 @@ sequenceDiagram
 
 1. **Topology is produced by you reading code.** Do not write or call any
    script that auto-extracts call relationships from source.
-2. **Every node / actor / message must have a location.** No exceptions.
+2. **Every node / edge / actor / message must have a location.** Generated
+   flowcharts use `nodes`/`edges` with full edge coverage. Legacy flat maps are
+   readable only with approximate source fallback for edges (§4.1). Visual-only
+   groups, notes, and fragment markers do not require locations.
 3. **Paths are relative to the repo root.** No absolute paths. No `./` prefix.
-4. **Path existence is verified.** The validator runs `fs.existsSync` on every
-   path. If you fabricate a path, validation fails.
-5. **Line numbers are 1-based positive integers** pointing at the most
-   representative line for that element (function definition, call site, etc.).
-6. **ID sets must align exactly.** Every node ID in `graph.mmd` must appear in
-   `graph.locs.json`. Every key in `graph.locs.json` must correspond to a real
-   node ID. No orphans either direction.
+4. **Read source context to verify semantics.** Validation checks structure,
+   paths, and line ranges; it cannot prove that natural-language labels describe
+   the referenced statements.
+5. **Line numbers are 1-based positive integers within the file.** Behavior
+   nodes point to the actual statements implementing their labels. Only
+   entry/declaration nodes may point to definition lines. Edges and sequence
+   messages point to actual caller/sender-side calls, publishes, branches, or
+   returns. Never substitute function headers or invent locations. Repeated
+   locations are allowed for the same real statement. If one location cannot
+   faithfully express the meaning, split the diagram or narrow its semantics.
+6. **IDs and edge identities must align exactly.** Node keys must match the
+   Mermaid node IDs with no orphans. Each edge record must match exactly one
+   `JSON.stringify([from, to, occurrence])` identity (§4.1), with no missing or
+   extra edges. Count each directed pair from 1 in Mermaid order, expanding
+   chains left to right. Unrelated edges do not affect the count; regenerate
+   matching records when reordering edges with the same directed endpoints.
 7. **Message count must match.** For sequence diagrams, the number of message
    arrows in `graph.mmd` must equal `messages.length` in `graph.locs.json`.
 8. **Use the user's language** for all node labels, message texts, notes, and
    the topic slug. Use English for code identifiers in labels (function names,
    HTTP methods, status codes).
-9. **Stay within the Mermaid subset** (§3). Anything outside is rejected.
+9. **Use Mermaid syntax within the supported boundary**: the pinned engine must parse it, and CodeGraph must be able to represent it faithfully.
 10. **Maximum 3 retry rounds.** If validation fails 3 times in a row, stop,
     paste the latest error report to the user, and ask for guidance.
 
@@ -637,57 +623,21 @@ sequenceDiagram
 
 ## 8. Common Mistakes (Avoid These)
 
-The validator will reject each of these. Learn from them.
-
-### 8.1 Flowchart mistakes
-
 | Mistake | Why it fails | Fix |
 |---|---|---|
-| Using `graph TD` or `graph LR` instead of `flowchart TD/LR` | Wrong header | Use `flowchart TD` or `flowchart LR` |
-| Using `flowchart TB`/`BT`/`RL` | Out of subset | Use only `TD` or `LR` |
-| Using `subgraph ... end` | Out of subset | Flatten the flowchart (inline all nodes) |
-| Using `A(label)` round / `A((label))` circle / `A{{label}}` hex / `A[/x/]` parallelogram / `A>x]` asymmetric | Out of subset (only 4 shapes allowed: see §3.1) | Use `A[label]` rectangle instead |
-| Using `A --> B -- text --> C` (label outside pipes) | Out of subset (edge label must be inside `\|...\|`) | Use `A -->\|text\| B --> C` |
-| Using `A == text ==> B` thick / `A --- B` no arrow / `A <-> B` bidirectional / `A -> B` single dash | Out of subset (only 4 edge styles allowed: see §3.1) | Use `-->` or `-.->` with optional `\|text\|` |
-| Using `style A fill:#f00` or `classDef` / `class` | Out of subset | Drop styling; colors are applied by the renderer based on shape |
-| Using `click A callback` | Out of subset | Drop click directives; click is handled by the renderer |
-| Node ID like `1a` or `node-a` or `node.x` | Invalid ID pattern (must be `[A-Za-z][A-Za-z0-9_]*`) | Rename to `A1`, `nodeA`, `nodeX` |
-| Label containing unescaped `]`, `}`, `\|` | Breaks parser | Use HTML entities `&#93;` `&#125;` `&#124;` |
-| Quoted label like `A["foo"]` or `A['foo']` | Out of subset (no quoted labels) | Use `A[foo]` |
-| Markdown / HTML in labels (`**bold**`, `<br>`, backticks) | Out of subset | Plain text only; if multi-line needed, use a separate node |
-| `%% comment` lines | Out of subset (no comments) | Remove the line |
-| `accTitle` / `accDescr` / `---` YAML frontmatter | Out of subset | Remove |
-| `%%{init: {...}}%%` config directive | Out of subset | Remove |
-
-### 8.2 Sequence mistakes
-
-| Mistake | Why it fails | Fix |
-|---|---|---|
-| Using `participant A` without `as Name` | Out of subset | Always use `participant A as DisplayName` |
-| Using `actor A as Name` (`actor` keyword) | Out of subset | Use `participant A as Name` |
-| Using `activate A` / `deactivate A` or `+`/`-` shorthand | Out of subset | Drop activation; rely on call→return pairs |
-| Using `autonumber` | Out of subset | Drop it |
-| Using `par ... and ... end` / `critical ... end` / `break ... end` | Out of subset | Use `loop` or `alt`/`opt` to approximate |
-| Using `create participant B` / `destroy A` | Out of subset | Declare all participants up front |
-| Using `A->B: x` (single dash) / `A-->B` / `A--xB` / `A-xB` / `<<->>` | Out of subset (only 4 arrow styles allowed: see §3.2) | Use `->>`, `-->>`, `-)`, or `->>A` self-call |
-| Using `box` / `box Color Title ... end` | Out of subset | Drop; group conceptually via `loop` or naming |
-| Using `Note over A,B: x` (multi-actor span) | Out of subset (only single-actor `over`/`left of`/`right of`) | Use `Note over A: x` per actor, or split |
-| Using `links A: {...}` / `link A: ...` | Out of subset | Drop; locations live in `graph.locs.json` |
-| Undeclared actor used in a message (`A->>B: x` where B has no `participant` line) | Out of subset (every actor must be declared) | Add `participant B as B` first |
-| `rect rgb(...)`, color suffixes on notes/messages | Out of subset | Drop |
-
-### 8.3 Cross-cutting mistakes
-
-| Mistake | Why it fails | Fix |
-|---|---|---|
-| Missing location for some node/actor/message | ID misalignment | Add the missing `[file, line]` entry |
-| Absolute path `/Users/foo/...` | Path must be relative to repo root | Strip repo prefix |
-| Path with `./` or `../` prefix | Inconsistent | Remove prefix |
-| Path that does not exist on disk | Validator runs `fs.existsSync` | Use the real relative path |
-| Wrong message count (sequence) | Length mismatch | Re-count arrows in `graph.mmd`; `messages` array length must match |
-| Orphan loc (entry in `graph.locs.json` with no matching node/actor in `graph.mmd`) | ID misalignment (reverse direction) | Remove the orphan entry |
-| Two diagrams but using flat-form locs (no `flowchart`/`sequence` wrappers) | Shape mismatch | Use the wrapper form shown in Example 3 |
-| Single diagram but using wrapper form unnecessarily | Shape mismatch | Use flat form (flowchart only) or sequence form (sequence only) per §4 |
+| Using syntax that the pinned Mermaid engine does not accept | Validation follows the fixed vendored engine version (see the Mermaid Support Contract) | Check the vendor manifest and use syntax supported by that version |
+| Assuming every Mermaid feature or diagram type is supported | CodeGraph supports a bounded flowchart / sequence workflow, not all Mermaid features (see the Mermaid Support Contract) | Keep to supported syntax that the generated view can represent faithfully |
+| Treating subgraphs, groups, notes, or fragment markers as source-mapped elements | These are visual-only and do not need location records | Map all semantic nodes, edges, actors, and messages instead |
+| Expecting Mermaid callbacks or links to replace CodeGraph source navigation | CodeGraph click behavior is driven by semantic source locations | Use `graph.locs.json` for source navigation |
+| Relying on external image or icon URLs in an offline graph | External assets may not be available without a network | Keep essential meaning in text and locally available graph content |
+| Missing a node, edge, actor, or message location | Semantic source mappings require complete coverage | Add the exact matching record; for flowchart edges use the directed-pair occurrence identity (§4.1) |
+| Reordering repeated edges without updating their occurrences | Edge identity is assigned per directed endpoint pair in Mermaid order | Regenerate the affected edge mappings (§4.1) |
+| Using a function header or nearby line as a behavior location | Structural validation cannot establish semantic correspondence | Read surrounding source and point to the actual statement; narrow or split the diagram if needed |
+| Using an absolute path or a `./` / `../` prefix | Paths must be relative to the repository root | Use the real repository-relative path |
+| Using a path that does not exist or a line outside the file | Validator checks containment, file type, and line range | Fix the path or use a valid 1-based line number; removed review locations may refer to deleted files |
+| Wrong sequence message count | `messages` must match message-arrow order and count | Re-count message arrows; notes, groups, and fragment markers do not count |
+| Orphan location entry | Every node / actor ID and every edge identity must align with `graph.mmd` | Remove the orphan or add the matching Mermaid element |
+| Using flat-form locations for two diagrams | The two diagrams need `flowchart` / `sequence` wrappers | Use the wrapper form shown in Example 3 |
 
 ---
 
@@ -759,6 +709,6 @@ Then report to the user:
 | Artifact | Language |
 |---|---|
 | This SKILL.md | English |
-| Mermaid subset contract, error messages from scripts | English |
+| Mermaid support contract, error messages from scripts | English |
 | `graph.mmd` node labels, messages, notes, topic slug | User's preferred language |
 | Communication with user during alignment | User's preferred language |

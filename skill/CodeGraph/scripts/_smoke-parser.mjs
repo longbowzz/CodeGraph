@@ -55,7 +55,7 @@ const cases = [
 let pass = 0, fail = 0;
 for (const c of cases) {
   try {
-    const r = parseMermaid(c.text);
+    const r = await parseMermaid(c.text);
     const got = {};
     if (r.flowchart) {
       got.flowNodes = r.flowchart.nodes.length;
@@ -89,51 +89,151 @@ for (const c of cases) {
   }
 }
 
-// Negative cases
-const negs = [
-  { name: 'subgraph forbidden', text: `flowchart TD\nsubgraph X\nA --> B\nend` },
-  { name: 'activate forbidden', text: `sequenceDiagram\nparticipant A as A\nparticipant B as B\nA->>B: hi\nactivate B` },
-  { name: 'autonumber forbidden', text: `sequenceDiagram\nautonumber\nparticipant A as A` },
-  { name: 'bad node id with dash', text: `flowchart TD\nnode-a[hi] --> B` },
-  { name: 'bare participant no as', text: `sequenceDiagram\nparticipant A` },
-  { name: 'unclosed loop', text: `sequenceDiagram\nparticipant A as A\nloop x\nA->>A: y` },
-  { name: 'unknown actor in message', text: `sequenceDiagram\nparticipant A as A\nA->>B: hi` },
-  { name: 'label with unescaped ]', text: `flowchart TD\nA[foo] bar]` },
-  { name: 'message missing colon', text: `sequenceDiagram\nparticipant A as A\nparticipant B as B\nA->>B hi` },
-  // New: expanded forbidden-list coverage
-  { name: 'graph TD header (not flowchart)', text: `graph TD\nA[x] --> B[y]` },
-  { name: 'flowchart TB direction', text: `flowchart TB\nA[x] --> B[y]` },
-  { name: 'flowchart RL direction', text: `flowchart RL\nA[x] --> B[y]` },
-  { name: 'round node (paren)', text: `flowchart TD\nA(x) --> B[y]` },
-  { name: 'circle node', text: `flowchart TD\nA((x)) --> B[y]` },
-  { name: 'hexagon node', text: `flowchart TD\nA{{x}} --> B[y]` },
-  { name: 'parallelogram node', text: `flowchart TD\nA[/x/] --> B[y]` },
-  { name: 'thick edge', text: `flowchart TD\nA ==> B` },
-  { name: 'single-dash arrow', text: `flowchart TD\nA -> B` },
-  { name: 'label outside pipes', text: `flowchart TD\nA -- text --> B` },
-  { name: 'no-arrowhead edge', text: `flowchart TD\nA --- B` },
-  { name: 'bidirectional arrow', text: `flowchart TD\nA <-> B` },
-  { name: 'style directive', text: `flowchart TD\nA[x]\nstyle A fill:#f00` },
-  { name: 'classDef directive', text: `flowchart TD\nA[x]\nclassDef foo fill:#f00` },
-  { name: 'click directive', text: `flowchart TD\nA[x]\nclick A callback` },
-  { name: 'actor keyword', text: `sequenceDiagram\nactor A as Alice` },
-  { name: 'par fragment', text: `sequenceDiagram\nparticipant A as A\npar x\nA->>A: y\nend` },
-  { name: 'critical fragment', text: `sequenceDiagram\nparticipant A as A\ncritical x\nA->>A: y\nend` },
-  { name: 'break fragment', text: `sequenceDiagram\nparticipant A as A\nbreak x\nA->>A: y\nend` },
-  { name: 'create participant', text: `sequenceDiagram\nparticipant A as A\ncreate participant B as B` },
-  { name: 'destroy actor', text: `sequenceDiagram\nparticipant A as A\ndestroy A` },
-  { name: 'box directive', text: `sequenceDiagram\nbox foo\nparticipant A as A\nend` },
-  { name: 'multi-actor Note over', text: `sequenceDiagram\nparticipant A as A\nparticipant B as B\nNote over A,B: hi` },
-  { name: 'single-dash message arrow', text: `sequenceDiagram\nparticipant A as A\nparticipant B as B\nA->B: hi` },
-  { name: 'dotted message arrow', text: `sequenceDiagram\nparticipant A as A\nparticipant B as B\nA-->B: hi` },
-  { name: 'activation shorthand plus', text: `sequenceDiagram\nparticipant A as A\nparticipant B as B\nA->>+B: hi` },
-  { name: 'links directive', text: `sequenceDiagram\nparticipant A as A\nlinks A: {"x": "y"}` },
-  { name: 'mermaid comment line', text: `flowchart TD\n%% comment\nA[x] --> B[y]` },
+// Edge identities distinguish parallel edges and survive unrelated insertions.
+const edgeText = `flowchart TD
+A -->|first| B --> C
+A -.->|second| B
+A -->|first| B
+B --> A
+A --> A`;
+const identities = (await parseMermaid(edgeText)).flowchart.edges.map(e => e.id);
+const expectedIds = [
+  '["A","B",1]', '["B","C",1]', '["A","B",2]',
+  '["A","B",3]', '["B","A",1]', '["A","A",1]',
 ];
+const inserted = (await parseMermaid(edgeText.replace('flowchart TD', 'flowchart TD\nX --> Y')))
+  .flowchart.edges.slice(1).map(e => e.id);
+if (JSON.stringify(identities) === JSON.stringify(expectedIds) &&
+    JSON.stringify(inserted) === JSON.stringify(expectedIds)) {
+  console.log('PASS  parallel, chain, reverse and self-loop edge identities');
+  pass++;
+} else {
+  console.log('FAIL  edge identities', identities, inserted);
+  fail++;
+}
 
-for (const c of negs) {
+// Mainstream Mermaid flowchart syntax should parse into semantic graph elements.
+for (const [name, header] of [
+  ['graph LR alias', 'graph LR'],
+  ['flowchart TB', 'flowchart TB'],
+  ['flowchart BT', 'flowchart BT'],
+  ['flowchart RL', 'flowchart RL'],
+]) {
   try {
-    parseMermaid(c.text);
+    const r = await parseMermaid(`${header}\nA --> B`);
+    if (r.flowchart?.nodes.length === 2 && r.flowchart.edges.length === 1) {
+      console.log(`PASS  ${name}`);
+      pass++;
+    } else {
+      console.log(`FAIL  ${name} — unexpected semantic model`);
+      fail++;
+    }
+  } catch (e) {
+    console.log(`ERROR ${name} — ${e.message}`);
+    fail++;
+  }
+}
+
+const featureFlow = `flowchart LR
+subgraph outer [Outer systems]
+  A(Rounded) --> B((Circle))
+  subgraph inner [Nested systems]
+    B --> C{Decision}
+  end
+end
+style A fill:#f9f
+classDef hot fill:#f00
+class C hot
+linkStyle 0 stroke:#f00`;
+try {
+  const flow = (await parseMermaid(featureFlow)).flowchart;
+  const ids = flow.nodes.map(n => n.id);
+  const edgeIds = flow.edges.map(e => e.id);
+  if (JSON.stringify(ids) === JSON.stringify(['A', 'B', 'C']) &&
+      flow.edges.length === 2 && edgeIds.every(Boolean)) {
+    console.log('PASS  shapes, nested subgraphs, styles and semantic node/edge extraction');
+    pass++;
+  } else {
+    console.log('FAIL  flowchart features — unexpected semantic model', ids, edgeIds);
+    fail++;
+  }
+} catch (e) {
+  console.log(`ERROR flowchart features — ${e.message}`);
+  fail++;
+}
+
+// Sequence constructs should not become actors or messages themselves.
+const featureSequence = `sequenceDiagram
+autonumber
+A->>B: request
+activate B
+Note over A,B: processing
+alt accepted
+  B-->>A: accepted
+else rejected
+  B-->>A: rejected
+end
+par concurrent work
+  A-)B: async event
+and follow-up
+  B->>A: follow-up
+end
+critical guarded work
+  A->>B: guarded
+option fallback
+  B-->>A: fallback
+end
+break stop condition
+  B-->>A: stop
+end
+deactivate B`;
+try {
+  const sequence = (await parseMermaid(featureSequence)).sequence;
+  if (sequence.actors.length === 2 && sequence.messages.length === 8 &&
+      sequence.messages.every(message => message.from && message.to)) {
+    console.log('PASS  implicit actors, activation, notes, fragments and autonumber');
+    pass++;
+  } else {
+    console.log('FAIL  sequence features — unexpected semantic model',
+      sequence.actors.length, sequence.messages.length);
+    fail++;
+  }
+} catch (e) {
+  console.log(`ERROR sequence features — ${e.message}`);
+  fail++;
+}
+
+// Document boundaries must not consume quoted labels or discard trailing input.
+for (const [name, text, expected] of [
+  ['multiline header-looking label', 'flowchart TD\nA["first\nsequenceDiagram\nlast"] --> B', ['flowchart']],
+  ['comment quote before second diagram', 'flowchart TD\n%% " unmatched comment quote\nA --> B\n\nsequenceDiagram\nA->>B: work', ['flowchart', 'sequence']],
+  ['reverse diagram order', 'sequenceDiagram\nA->>B: work\n\nflowchart LR\nA --> B', ['flowchart', 'sequence']],
+]) {
+  try {
+    const result = await parseMermaid(text);
+    if (expected.every(kind => result[kind])) {
+      console.log(`PASS  ${name}`);
+      pass++;
+    } else {
+      console.log(`FAIL  ${name} — missing diagram`);
+      fail++;
+    }
+  } catch (error) {
+    console.log(`FAIL  ${name} — ${error.message}`);
+    fail++;
+  }
+}
+
+// Keep negative coverage for genuinely malformed syntax only.
+const invalid = [
+  { name: 'third document rejected', text: 'flowchart TD\nA --> B\nsequenceDiagram\nA->>B: work\nflowchart LR\nC --> D' },
+  { name: 'trailing junk rejected', text: 'flowchart TD\nA --> B\nsequenceDiagram\nA->>B: work\nnot valid Mermaid' },
+  { name: 'unclosed loop', text: `sequenceDiagram\nloop retry\nA->>A: ping` },
+  { name: 'message missing colon', text: `sequenceDiagram\nA->>B hi` },
+];
+for (const c of invalid) {
+  try {
+    await parseMermaid(c.text);
     console.log(`FAIL  ${c.name} — expected ParseError, got success`);
     fail++;
   } catch (e) {

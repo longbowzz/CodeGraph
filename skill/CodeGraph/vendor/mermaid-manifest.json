@@ -1,0 +1,27 @@
+{
+  "name": "mermaid",
+  "version": "11.12.0",
+  "license": "MIT",
+  "source": "https://registry.npmjs.org/mermaid/-/mermaid-11.12.0.tgz",
+  "integrity": "sha512-ZudVx73BwrMJfCFmSSJT84y6u5brEoV8DOItdHomNLz32uBjNrelm7mg95X7g+C6UoQH/W6mBLGDEDv73JdxBg==",
+  "build": "npm ci --ignore-scripts && npm run build:mermaid",
+  "patches": [
+    "Dagre self-loop clones preserve original DB edge id in path/label data-id; helper nodes and segment ids are unique per original edge.",
+    "Sequence renderer carries arrow-only DB index into data-cg-message group; actor dispatcher wraps all actor shapes with data-cg-actor.",
+    "Node-only DOMPurify identity shim for semantic extraction; Node box CSS validation omitted. Browser retains real DOMPurify and CSS validation."
+  ],
+  "files": {
+    "mermaid.min.js": {
+      "bytes": 2724662,
+      "sha256": "8a7e819ef92e36858e87fdd9694f68429e643a126d07eacbe1dbeeecb1b3415c"
+    },
+    "mermaid-parser.bundle.mjs": {
+      "bytes": 2740821,
+      "sha256": "a40f8d6dec9002d8b02134a1f413fd11160c2c7ea4b50479baa51a1570784d31"
+    },
+    "mermaid-LICENSE": {
+      "bytes": 1089,
+      "sha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80"
+    }
+  }
+}
