@@ -1,0 +1,77 @@
+// Shared semantic extraction and browser rendering for the pinned official engine.
+import mermaid from 'mermaid';
+
+export const version = '11.12.0';
+export const messageTypes = new Set([0, 1, 3, 4, 5, 6, 24, 25, 33, 34]);
+const config = { startOnLoad: false, securityLevel: 'strict', suppressErrorRendering: true };
+
+export async function parseDiagram(source) {
+  mermaid.initialize(config);
+  const diagram = await mermaid.mermaidAPI.getDiagramFromText(source);
+  const db = diagram.db;
+  if (diagram.type.startsWith('flowchart')) {
+    const occurrences = new Map();
+    return {
+      type: 'flowchart', source, direction: db.getDirection() || 'TB',
+      nodes: [...db.getVertices().values()].map(n => ({
+        id: n.id, label: n.text ?? n.id, shape: n.type || 'square', domId: n.domId,
+      })),
+      edges: db.getEdges().map(e => {
+        const pair = JSON.stringify([e.start, e.end]);
+        const occurrence = (occurrences.get(pair) || 0) + 1;
+        occurrences.set(pair, occurrence);
+        return { from: e.start, to: e.end, occurrence,
+          id: JSON.stringify([e.start, e.end, occurrence]), domId: e.id,
+          label: e.text || null, style: e.stroke === 'dotted' ? 'dashed' : 'solid' };
+      }),
+    };
+  }
+  if (diagram.type === 'sequence') {
+    const events = db.getMessages();
+    const blocks = [], stack = [];
+    const starts = { 10: 'loop', 12: 'alt', 15: 'opt', 19: 'par', 22: 'rect', 27: 'critical', 30: 'break', 32: 'par' };
+    const ends = new Set([11, 14, 16, 21, 23, 29, 31]);
+    for (const event of events) {
+      if (starts[event.type]) {
+        const block = { kind: starts[event.type], label: event.message, startLine: null, endLine: null };
+        blocks.push(block); stack.push(block);
+      } else if (ends.has(event.type)) stack.pop();
+    }
+    return {
+      type: 'sequence', source,
+      actors: [...db.getActors()].map(([id, a]) => ({ id, name: a.description || a.name, type: a.type })),
+      messages: events.filter(e => messageTypes.has(e.type)).map((e, index) => ({
+        from: e.from, to: e.to, text: e.message, index,
+        style: [1, 4, 6, 25, 34].includes(e.type) ? 'return' : [5, 6].includes(e.type) ? 'async' : 'sync',
+      })),
+      notes: events.filter(e => e.type === 2).map(e => ({ actor: e.from, actors: [e.from, e.to],
+        position: ['left', 'right', 'over'][e.placement], text: e.message })),
+      blocks,
+    };
+  }
+  throw new Error(`CodeGraph supports flowchart and sequence diagrams, got ${diagram.type}`);
+}
+
+export async function render(id, source, options = {}) {
+  const model = await parseDiagram(source);
+  mermaid.initialize({ ...config, ...options, startOnLoad: false, securityLevel: 'strict' });
+  const result = await mermaid.render(id, source);
+  // Mermaid emits HTML void tags inside foreignObject labels. HTML parsing
+  // preserves SVG namespaces while accepting that embedded label markup.
+  const template = document.createElement('template');
+  template.innerHTML = result.svg;
+  const svg = template.content.querySelector('svg');
+  if (model.type === 'flowchart') {
+    const ids = new Map([...svg.querySelectorAll('[id]')].map(el => [el.id, el]));
+    for (const node of model.nodes) ids.get(node.domId)?.setAttribute('data-cg-node', node.id);
+    for (const edge of model.edges) {
+      for (const el of svg.querySelectorAll('[data-id]')) {
+        if (el.getAttribute('data-id') !== edge.domId) continue;
+        const target = el.closest('.edgeLabels > .edgeLabel') || el;
+        target.setAttribute('data-cg-edge', edge.id);
+      }
+      ids.get(edge.domId)?.setAttribute('data-cg-edge', edge.id);
+    }
+  }
+  return { svg: new XMLSerializer().serializeToString(svg) };
+}

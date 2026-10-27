@@ -46,7 +46,9 @@ with sync_playwright() as p:
         expected = edge.evaluate(r'''el => {
             const data = JSON.parse(document.getElementById('cg-data').textContent);
             const locs = data.flowchart.locs;
-            const loc = locs[el.dataset.from] || locs[el.dataset.to];
+            const loc = data.flowchart.edgeLocs !== undefined
+                ? data.flowchart.edgeLocs[el.dataset.edgeId]
+                : locs[el.dataset.from] || locs[el.dataset.to];
             const file = data.repo.replace(/\/$/, '') + '/' + loc[0];
             return `cursor://file${file}:${loc[1]}`;
         }''')

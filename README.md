@@ -9,14 +9,24 @@
 Turn a request like *"use CodeGraph to draw the login flow as a flowchart"* into a self-contained `graph.html` you can open in any browser:
 
 - The agent reads your repo and produces two artifacts:
-  - `graph.mmd` — topology in a strict Mermaid subset.
-  - `graph.locs.json` — flat `[file, line]` lookup per node.
-- A validator checks syntax, ID alignment, and path existence.
-- A builder inlines everything (vendored dagre + renderer + your data) into one HTML file with zoom / pan / hover / click-to-jump.
+  - `graph.mmd` — a flowchart and/or sequence diagram using the supported portion of official Mermaid syntax (see [Mermaid support](#mermaid-support)).
+  - `graph.locs.json` — exact semantic source locations for flowchart nodes and edges, and sequence actors and messages (`[file, line, status?]`).
+- A validator checks Mermaid syntax, location structure, ID/edge alignment, paths, and line ranges. The agent reads source context to verify that labels describe the referenced statements; validation cannot prove natural-language semantics.
+- A builder inlines the vendored Mermaid engine, renderer, styles, and graph data into one HTML file with zoom / pan / hover / click-to-jump.
 
 **Review mode**: give the agent a PR, commit, or `base..head` range and it highlights added / modified / removed nodes and edges so reviewers see the change in context.
 
 The HTML has **zero runtime dependencies** — no server, no CDN, no `npm install` on the viewer's machine.
+
+### Mermaid support
+
+CodeGraph uses the official Mermaid **11.12.0** engine, fixed and vendored with the skill; see [`vendor/mermaid-manifest.json`](skill/CodeGraph/vendor/mermaid-manifest.json) for bundle details. The supported contract is Mermaid syntax accepted by that pinned version and representable in CodeGraph's flowchart / sequence view. Each file may contain one flowchart and/or one sequence diagram; other diagram types are outside this contract.
+
+Common constructs include flowcharts with `graph` / `flowchart` headers in `TD`, `TB`, `BT`, `LR`, or `RL`, common node shapes, labeled and styled edges, chains, subgraphs, classes, quoted and multiline labels; and sequence diagrams with actor / participant declarations (including implicit participants), activation, notes, `loop`, `alt`, `opt`, `par`, `critical`, and `break` fragments, `rect` / `box` grouping, and `autonumber`. This is a representative list, not a complete compatibility table; CodeGraph imposes no arbitrary two-level nesting limit. Use syntax accepted by the pinned engine and simplify constructs the source-navigation view cannot represent faithfully.
+
+Source mappings remain exact and complete for semantic flowchart nodes and edges, and sequence actors and messages. Subgraph / group containers, notes, and fragment markers are visual-only and do not need locations. Rendering uses Mermaid strict security. Mermaid callbacks and links do not replace CodeGraph's source navigation. External ELK layouts and image / icon assets are not bundled; external images and icons are not guaranteed to work offline.
+
+Mermaid and the other browser assets are vendored into generated HTML, so generation and viewing need no runtime `npm install` or network access. Development dependencies for rebuilding the vendored assets are separate.
 
 ### Example output
 
@@ -32,7 +42,7 @@ The HTML has **zero runtime dependencies** — no server, no CDN, no `npm instal
 
 ### Requirements
 
-- **Node.js 18+** (uses native `node:*` ESM imports; no `npm install` needed at runtime — all dependencies are vendored).
+- **Node.js 18+** (uses native `node:*` ESM imports; no `npm install` needed for graph generation or viewing — development build dependencies are separate).
 - A supported editor for click-to-jump (see below).
 - An AI agent that supports skills (e.g. Claude Code), or run the scripts manually.
 
@@ -88,6 +98,59 @@ node skill/CodeGraph/scripts/build-html.mjs \
   --editor-config /path/to/your/repo/.codegraph/config.json
 ```
 
+## Location data format
+
+The recommended flowchart format separates node locations from edge locations:
+
+```json
+{
+  "flowchart": {
+    "nodes": {
+      "A": ["src/handler.ts", 12],
+      "B": ["src/auth.ts", 8, "modified"]
+    },
+    "edges": [
+      {"from": "A", "to": "B", "occurrence": 1, "loc": ["src/handler.ts", 25, "modified"]}
+    ]
+  }
+}
+```
+
+For `A --> B`, this maps the edge to the actual call in the handler. Each location
+is `[file, line]` or `[file, line, status]`: paths are relative to the analyzed repo,
+lines are 1-based and within the file, and optional status is `added`, `modified`,
+`removed`, or `unchanged` (the default). A single flowchart also accepts unwrapped
+`{ "nodes": {...}, "edges": [...] }`. The new format requires exactly one location
+record for **every edge**, including unlabeled, dashed, repeated, and chained edges.
+
+Edge identity is `JSON.stringify([from, to, occurrence])`. `occurrence` counts
+from 1 **per directed endpoint pair**, in Mermaid order, expanding chains left to
+right. For `A --> B --> A` followed by `A --> B`, the identities are
+`["A","B",1]`, `["B","A",1]`, and `["A","B",2]`. Unrelated edges do not change
+the counter. Reordering edges with the same directed endpoints requires
+regenerating their matching location records; labels and styles are not identity.
+
+Sequence diagrams use `{ "actors": { ... }, "messages": [...] }`; message
+locations follow message-arrow order exactly. For both diagram types in one
+Mermaid file, use `{ "flowchart": { "nodes": {...}, "edges": [...] },
+"sequence": { "actors": {...}, "messages": [...] } }`.
+
+Behavior nodes must point to the actual statements implementing their labels;
+only entry/declaration nodes may use definition lines. Edges point to actual
+caller-side calls, publishes, branches, or returns, and sequence messages to
+where the send/call/return actually happens. Locations may repeat for the same
+real statement. The generating agent must read the surrounding source to verify
+each reference, never invent a location or substitute a convenient function
+header. If one source location cannot express an element faithfully, split the
+diagram or narrow its semantics. The validator checks structure, paths, and line
+ranges; it cannot prove this semantic correspondence.
+
+**Legacy input:** old flat node maps (`{ "A": [file, line], ... }`, also inside a
+`flowchart` wrapper) remain readable. Their edges use an **approximate source
+fallback**. New generation uses explicit `nodes`/`edges` with full edge coverage.
+See [the skill contract](skill/CodeGraph/SKILL.md#4-graphlocsjson-format) for paired
+flowchart and sequence examples.
+
 ## Output structure
 
 ```
@@ -137,7 +200,7 @@ CodeGraph/
 ├── skill/CodeGraph/
 │   ├── SKILL.md                  # Agent instructions
 │   ├── scripts/
-│   │   ├── mermaid-parser.mjs    # Strict Mermaid subset parser
+│   │   ├── mermaid-parser.mjs    # Mermaid syntax parser and graph model
 │   │   ├── validate.mjs          # Schema + ID + path validator
 │   │   ├── build-html.mjs        # Single-page HTML builder
 │   │   ├── _smoke-parser.mjs     # Parser tests
@@ -147,8 +210,10 @@ CodeGraph/
 │   │   ├── render.js             # SVG renderer + zoom/pan + click handler
 │   │   └── styles.css
 │   └── vendor/
-│       ├── dagre.min.js          # Bundled @dagrejs/dagre + graphlib
-│       └── highlight.min.js      # Bundled highlight.js (web editor only)
+│       ├── mermaid-manifest.json # Pinned version and bundle metadata
+│       ├── mermaid.min.js        # Fixed official Mermaid browser bundle
+│       ├── mermaid-parser.bundle.mjs # Official Mermaid parser for Node.js
+│       └── highlight.min.js      # Bundled highlight.js (source code panel)
 ├── images/                       # README screenshots
 ├── LICENSE
 └── README.md

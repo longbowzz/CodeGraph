@@ -3,7 +3,7 @@
 //   node validate.mjs --mmd <path> --locs <path> --repo <repo-root>
 //
 // Validates:
-//   1. graph.mmd parses against the Mermaid subset (via mermaid-parser.mjs).
+//   1. graph.mmd parses with the official Mermaid parser (via mermaid-parser.mjs).
 //   2. graph.locs.json is well-formed and structurally correct.
 //   3. ID sets align between mmd and locs (no orphans either direction).
 //   4. Sequence: messages.length === arrow count in mmd.
@@ -15,9 +15,10 @@
 //
 // Exit code: 0 on success, 1 on any error.
 
-import { readFileSync, existsSync } from 'node:fs';
-import { resolve, join, relative, isAbsolute } from 'node:path';
+import { readFileSync, existsSync, realpathSync, statSync } from 'node:fs';
+import { resolve, relative, isAbsolute, dirname } from 'node:path';
 import { parseMermaid, ParseError } from './mermaid-parser.mjs';
+import { normalizeLocations, isRecord } from './location-data.mjs';
 
 function parseArgs(argv) {
   const args = { mmd: null, locs: null, repo: null };
@@ -63,11 +64,11 @@ const repoAbs = resolve(args.repo);
 let parsed;
 try {
   const mmdText = readFileSync(args.mmd, 'utf8');
-  parsed = parseMermaid(mmdText);
+  parsed = await parseMermaid(mmdText);
 } catch (e) {
   if (e instanceof ParseError) {
     err('MMD_PARSE_ERROR', `${args.mmd}:${e.line}`, e.message,
-      `Edit graph.mmd line ${e.line} to match the Mermaid subset contract in SKILL.md §3.`);
+      `Edit graph.mmd line ${e.line} to fix Mermaid syntax.`);
     fail();
   } else {
     err('MMD_READ_ERROR', args.mmd, e.message, `Ensure graph.mmd exists and is readable.`);
@@ -86,66 +87,31 @@ try {
   fail();
 }
 
-// Detect which form the locs file is in:
-// - Flat form (flowchart only): { "<id>": [file, line], ... }
-// - Sequence form (sequence only): { actors: {...}, messages: [[file,line], ...] }
-// - Wrapper form (both): { flowchart: {...flat...}, sequence: {...seq...} }
-function isSeqShape(o) {
-  return o && typeof o === 'object' &&
-         'actors' in o && 'messages' in o &&
-         !('flowchart' in o) && !('sequence' in o);
-}
-function isFlatShape(o) {
-  return o && typeof o === 'object' &&
-         !('actors' in o) && !('messages' in o) &&
-         !('flowchart' in o) && !('sequence' in o);
-}
-
 let flowLocs = null;   // Map<id, [file, line]>
+let edgeLocs = null;   // Structured flowchart form opts into exact edge coverage.
 let seqLocs = null;    // { actors: Map<id, [file,line]>, messages: [[file,line]] }
 
-if (parsed.flowchart && parsed.sequence) {
-  // Expect wrapper form
-  if (!locsRaw.flowchart || !locsRaw.sequence) {
-    err('LOCS_SHAPE_MISMATCH', args.locs,
-      `graph.mmd contains both flowchart and sequence, but graph.locs.json does not have 'flowchart' and 'sequence' wrappers`,
-      `Use the wrapper form: { "flowchart": {...flat...}, "sequence": { "actors": {...}, "messages": [...] } }`);
-    fail();
+try {
+  const locations = normalizeLocations(parsed, locsRaw);
+  if (locations.flowchart) {
+    flowLocs = new Map(Object.entries(locations.flowchart.nodes));
+    edgeLocs = locations.flowchart.edges;
+    if (edgeLocs === null && parsed.flowchart.edges.length > 0) {
+      warn('LEGACY_EDGE_LOCS_APPROXIMATE', args.locs,
+        'legacy node-only locations provide approximate edge navigation',
+        'Use { "nodes": {...}, "edges": [...] } to map every edge to its source location.');
+    }
   }
-  flowLocs = new Map(Object.entries(locsRaw.flowchart));
-  seqLocs = {
-    actors: new Map(Object.entries(locsRaw.sequence.actors || {})),
-    messages: locsRaw.sequence.messages || [],
-  };
-} else if (parsed.flowchart) {
-  // Expect flat form (or wrapper with only flowchart)
-  if (locsRaw.flowchart && !locsRaw.sequence) {
-    flowLocs = new Map(Object.entries(locsRaw.flowchart));
-  } else if (isFlatShape(locsRaw)) {
-    flowLocs = new Map(Object.entries(locsRaw));
-  } else {
-    err('LOCS_SHAPE_MISMATCH', args.locs,
-      `graph.mmd has only a flowchart; graph.locs.json must be flat { "<id>": [file, line] } or { "flowchart": {...} }`,
-      `Use the flat form shown in SKILL.md §4.1.`);
-    fail();
-  }
-} else if (parsed.sequence) {
-  if (locsRaw.sequence && !locsRaw.flowchart) {
+  if (locations.sequence) {
     seqLocs = {
-      actors: new Map(Object.entries(locsRaw.sequence.actors || {})),
-      messages: locsRaw.sequence.messages || [],
+      actors: new Map(Object.entries(locations.sequence.actors)),
+      messages: locations.sequence.messages,
     };
-  } else if (isSeqShape(locsRaw)) {
-    seqLocs = {
-      actors: new Map(Object.entries(locsRaw.actors || {})),
-      messages: locsRaw.messages || [],
-    };
-  } else {
-    err('LOCS_SHAPE_MISMATCH', args.locs,
-      `graph.mmd has only a sequence; graph.locs.json must be { "actors": {...}, "messages": [...] } or { "sequence": {...} }`,
-      `Use the sequence form shown in SKILL.md §4.2.`);
-    fail();
   }
+} catch (e) {
+  err(e.code || 'LOCS_SHAPE_MISMATCH', args.locs, e.message,
+    e.fix_hint || 'Use a flowchart or sequence location object.');
+  fail();
 }
 
 // ---------- 3. Validate locs structure ----------
@@ -190,6 +156,45 @@ if (flowLocs) {
   for (const [id, entry] of flowLocs.entries()) {
     const e = validateEntry(entry, id);
     if (e) checkedEntries.push([id, e, 'flow']);
+  }
+}
+if (edgeLocs) {
+  const mappedIds = new Set();
+  const graphIds = new Set(parsed.flowchart.edges.map(edge => edge.id));
+  for (let idx = 0; idx < edgeLocs.length; idx++) {
+    const edge = edgeLocs[idx];
+    const key = `edges[${idx}]`;
+    if (!isRecord(edge) || typeof edge.from !== 'string' || !edge.from ||
+        typeof edge.to !== 'string' || !edge.to) {
+      err('LOCS_EDGE_SHAPE', `${args.locs}:${key}`,
+        'edge mapping must have non-empty from and to strings, occurrence, and loc',
+        'Use { "from": "A", "to": "B", "occurrence": 1, "loc": ["file", 1] }.');
+      continue;
+    }
+    if (!Number.isSafeInteger(edge.occurrence) || edge.occurrence < 1) {
+      err('LOCS_EDGE_OCCURRENCE_INVALID', `${args.locs}:${key}`,
+        `occurrence must be a positive integer, got ${JSON.stringify(edge.occurrence)}`,
+        'Count edges with the same directed endpoints in parsing order, starting at 1.');
+      continue;
+    }
+    const id = JSON.stringify([edge.from, edge.to, edge.occurrence]);
+    if (mappedIds.has(id)) {
+      err('DUPLICATE_EDGE_LOC', `${args.locs}:${key}`, `duplicate edge mapping ${id}`,
+        'Keep exactly one location mapping per edge.');
+    }
+    mappedIds.add(id);
+    if (!graphIds.has(id)) {
+      err('ORPHAN_EDGE_LOC', `${args.locs}:${key}`, `no such flowchart edge ${id}`,
+        'Use endpoints and occurrence from graph.mmd.');
+    }
+    const entry = validateEntry(edge.loc, `${key}.loc`);
+    if (entry) checkedEntries.push([`${key}.loc`, entry, 'flow-edge']);
+  }
+  for (const id of graphIds) {
+    if (!mappedIds.has(id)) {
+      err('MISSING_EDGE_LOC', args.locs, `flowchart edge ${id} has no location mapping`,
+        'Add exactly one mapping with from, to, occurrence, and loc for this edge.');
+    }
   }
 }
 if (seqLocs) {
@@ -249,23 +254,63 @@ if (parsed.sequence) {
   }
 }
 
-// ---------- 5. Path existence ----------
-for (const [key, entry, kind] of checkedEntries) {
+// ---------- 5. Repository containment, regular files, and line bounds ----------
+const repoReal = realpathSync(repoAbs);
+const lineCounts = new Map();
+function outside(root, target) {
+  const rel = relative(root, target);
+  return rel === '..' || rel.startsWith('../') || isAbsolute(rel);
+}
+for (const [key, entry] of checkedEntries) {
   const [file, line, status] = entry;
-  const abs = join(repoAbs, file);
-  if (!existsSync(abs)) {
-    if (status === 'removed') {
-      // Removed nodes may point at files that no longer exist (the file was
-      // deleted in the diff). Emit a warning so the build proceeds but the
-      // report is visible.
-      warn('PATH_NOT_FOUND', `${args.locs}:${key}`,
-        `file does not exist under repo root (acceptable for status='removed'): ${file}`,
-        `Optionally repoint the loc at the closest still-existing file to keep click-to-jump useful.`);
-    } else {
-      err('PATH_NOT_FOUND', `${args.locs}:${key}`,
-        `file does not exist under repo root: ${file} (looked at ${abs})`,
-        `Fix the path. Must be relative to repo root. Verify with: ls ${relative(process.cwd(), abs) || abs}`);
+  const abs = resolve(repoAbs, file);
+  if (outside(repoAbs, abs)) {
+    err('LOCS_PATH_OUTSIDE_REPO', `${args.locs}:${key}`, `path escapes repo root: ${file}`,
+      'Use a path inside the repository.');
+    continue;
+  }
+  try {
+    // Resolve the nearest existing ancestor too, so removed/missing files cannot
+    // escape through a symlink to a directory outside the repository.
+    let ancestor = abs;
+    while (!existsSync(ancestor) && ancestor !== dirname(ancestor)) ancestor = dirname(ancestor);
+    if (outside(repoReal, realpathSync(ancestor))) {
+      err('LOCS_PATH_OUTSIDE_REPO', `${args.locs}:${key}`, `path resolves outside repo root: ${file}`,
+        'Use a file whose real path is inside the repository.');
+      continue;
     }
+    if (!existsSync(abs)) {
+      if (status === 'removed') {
+        warn('PATH_NOT_FOUND', `${args.locs}:${key}`,
+          `file does not exist under repo root (acceptable for status='removed'): ${file}`,
+          'Keep the location tied to the removed statement; use review mode to inspect its base-version source.');
+      } else {
+        err('PATH_NOT_FOUND', `${args.locs}:${key}`, `file does not exist under repo root: ${file}`,
+          'Fix the path. Must be relative to repo root.');
+      }
+      continue;
+    }
+    if (!statSync(abs).isFile()) {
+      err('PATH_NOT_FILE', `${args.locs}:${key}`, `path is not a regular file: ${file}`,
+        'Point the location at a source file.');
+      continue;
+    }
+    if (status !== 'removed') {
+      if (!lineCounts.has(abs)) {
+        const text = readFileSync(abs, 'utf8');
+        const count = text === '' ? 0 : text.split(/\r\n|\n|\r/).length - (/[\r\n]$/.test(text) ? 1 : 0);
+        lineCounts.set(abs, count);
+      }
+      const count = lineCounts.get(abs);
+      if (line > count) {
+        err('LOCS_LINE_OUT_OF_RANGE', `${args.locs}:${key}`,
+          `line ${line} exceeds ${file}'s ${count} lines`,
+          'Use a line number within the current file.');
+      }
+    }
+  } catch (e) {
+    err('PATH_READ_ERROR', `${args.locs}:${key}`, `cannot inspect ${file}: ${e.message}`,
+      'Use a readable regular file inside the repository.');
   }
 }
 

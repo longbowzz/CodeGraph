@@ -1,12 +1,12 @@
 // _smoke-validate.mjs — quick smoke tests for validate.mjs
 // Run: node skill/CodeGraph/scripts/_smoke-validate.mjs
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 const tmp = mkdtempSync(join(tmpdir(), 'cg-validate-'));
-const repo = tmp;
+const repo = join(tmp, 'repo');
 // Fake source files for path-existence checks
 mkdirSync(join(repo, 'src'), { recursive: true });
 writeFileSync(join(repo, 'src/handler.ts'), 'export const a = 1;\n'.repeat(60));
@@ -14,6 +14,13 @@ writeFileSync(join(repo, 'src/auth.ts'), 'export const b = 2;\n'.repeat(60));
 writeFileSync(join(repo, 'src/audit.ts'), 'export const c = 3;\n'.repeat(10));
 writeFileSync(join(repo, 'src/client.ts'), 'export const d = 4;\n'.repeat(10));
 writeFileSync(join(repo, 'src/server.ts'), 'export const e = 5;\n'.repeat(60));
+writeFileSync(join(repo, 'src/empty.ts'), '');
+writeFileSync(join(repo, 'src/one.ts'), 'one');
+writeFileSync(join(repo, 'src/crlf.ts'), 'one\r\ntwo\r\n');
+writeFileSync(join(tmp, 'outside.ts'), 'outside\n');
+symlinkSync(join(tmp, 'outside.ts'), join(repo, 'src/outside.ts'));
+symlinkSync(tmp, join(repo, 'src/outside-dir'));
+symlinkSync(join(repo, 'src/handler.ts'), join(repo, 'src/inside.ts'));
 
 const outDir = join(repo, '.codegraph', 'output', 'test');
 mkdirSync(outDir, { recursive: true });
@@ -42,6 +49,14 @@ function runExpect(args, expectOk, name, expectCode) {
   }
   const parsed = JSON.parse(stdout);
   const actualOk = parsed.ok === true;
+  if (exitCode !== (expectOk ? 0 : 1)) {
+    console.log(`FAIL  ${name} — unexpected exit code ${exitCode}`);
+    return false;
+  }
+  if (args.expectWarning && !parsed.warnings?.some(w => w.code === args.expectWarning)) {
+    console.log(`FAIL  ${name} — missing warning ${args.expectWarning}`);
+    return false;
+  }
   if (actualOk === expectOk) {
     if (expectCode) {
       const firstErr = parsed.errors?.[0]?.code;
@@ -238,6 +253,97 @@ B-->>A: result`,
     expectOk: true,
   },
 ];
+
+const nodes = { A: ['src/handler.ts', 1], B: ['src/auth.ts', 2] };
+const edge = (from = 'A', to = 'B', occurrence = 1, loc = ['src/handler.ts', 3]) =>
+  ({ from, to, occurrence, loc });
+const structuredMmd = 'flowchart TD\nA[x] -->|one| B[y]\nA -.->|two| B\nB --> A';
+const structuredEdges = [edge(), edge('A', 'B', 2), edge('B', 'A')];
+cases.push(
+  { name: 'structured wrapper parallel and reverse edges', mmd: structuredMmd,
+    locs: { flowchart: { nodes, edges: structuredEdges } }, expectOk: true },
+  { name: 'structured unwrapped shuffled edge mappings', mmd: structuredMmd,
+    locs: { nodes, edges: [...structuredEdges].reverse() }, expectOk: true },
+  { name: 'structured mixed sequence', mmd: structuredMmd + '\n\nsequenceDiagram\nparticipant A as Caller\nparticipant B as Callee\nA->>B: call',
+    locs: { flowchart: { nodes, edges: structuredEdges }, sequence: { actors: nodes, messages: [['src/auth.ts', 3]] } }, expectOk: true },
+  { name: 'structured chain and self edge', mmd: 'flowchart TD\nA[x] --> B[y] --> A\nA --> A',
+    locs: { nodes, edges: [edge(), edge('B', 'A'), edge('A', 'A')] }, expectOk: true },
+  { name: 'structured empty edge list', mmd: 'flowchart TD\nA[x]',
+    locs: { nodes: { A: nodes.A }, edges: [] }, expectOk: true },
+  { name: 'structured missing edge', mmd: structuredMmd,
+    locs: { nodes, edges: structuredEdges.slice(0, 2) }, expectOk: false, expectCode: 'MISSING_EDGE_LOC' },
+  { name: 'structured duplicate edge', mmd: structuredMmd,
+    locs: { nodes, edges: [...structuredEdges, edge()] }, expectOk: false, expectCode: 'DUPLICATE_EDGE_LOC' },
+  { name: 'structured orphan occurrence', mmd: structuredMmd,
+    locs: { nodes, edges: [...structuredEdges, edge('A', 'B', 3)] }, expectOk: false, expectCode: 'ORPHAN_EDGE_LOC' },
+  { name: 'structured orphan endpoint', mmd: structuredMmd,
+    locs: { nodes, edges: [...structuredEdges, edge('A', 'Z')] }, expectOk: false, expectCode: 'ORPHAN_EDGE_LOC' },
+  { name: 'structured malformed edge', mmd: structuredMmd,
+    locs: { nodes, edges: [null] }, expectOk: false, expectCode: 'LOCS_EDGE_SHAPE' },
+  { name: 'structured missing edge loc', mmd: 'flowchart TD\nA[x] --> B[y]',
+    locs: { nodes, edges: [{ from: 'A', to: 'B', occurrence: 1 }] }, expectOk: false, expectCode: 'LOCS_ENTRY_SHAPE' },
+  { name: 'structured missing edges array', mmd: 'flowchart TD\nA[x]',
+    locs: { nodes: { A: nodes.A } }, expectOk: false, expectCode: 'LOCS_SHAPE_MISMATCH' },
+  { name: 'structured malformed nodes', mmd: 'flowchart TD\nA[x]',
+    locs: { nodes: null, edges: [] }, expectOk: false, expectCode: 'LOCS_SHAPE_MISMATCH' },
+  { name: 'legacy node ids nodes and edges', mmd: 'flowchart TD\nnodes[x] --> edges[y]',
+    locs: { nodes: nodes.A, edges: nodes.B }, expectOk: true, expectWarning: 'LEGACY_EDGE_LOCS_APPROXIMATE' },
+  { name: 'structured missing occurrence', mmd: structuredMmd,
+    locs: { nodes, edges: [{ from: 'A', to: 'B', loc: nodes.A }] },
+    expectOk: false, expectCode: 'LOCS_EDGE_OCCURRENCE_INVALID' },
+  { name: 'sequence message line beyond EOF',
+    mmd: 'sequenceDiagram\nparticipant A as Caller\nparticipant B as Callee\nA->>B: call',
+    locs: { actors: nodes, messages: [['src/auth.ts', 61]] },
+    expectOk: false, expectCode: 'LOCS_LINE_OUT_OF_RANGE' },
+  { name: 'sequence actor directory',
+    mmd: 'sequenceDiagram\nparticipant A as Caller',
+    locs: { actors: { A: ['src', 1] }, messages: [] },
+    expectOk: false, expectCode: 'PATH_NOT_FILE' },
+  { name: 'sequence actors must be object',
+    mmd: 'sequenceDiagram\nparticipant A as Caller',
+    locs: { actors: [], messages: [] },
+    expectOk: false, expectCode: 'LOCS_SHAPE_MISMATCH' },
+  { name: 'sequence messages must be array',
+    mmd: 'sequenceDiagram\nparticipant A as Caller',
+    locs: { actors: { A: ['src/client.ts', 1] }, messages: {} },
+    expectOk: false, expectCode: 'LOCS_SHAPE_MISMATCH' },
+);
+for (const occurrence of [0, -1, 1.5, '1', null, Number.MAX_SAFE_INTEGER + 1]) {
+  cases.push({ name: `invalid edge occurrence ${JSON.stringify(occurrence)}`, mmd: structuredMmd,
+    locs: { nodes, edges: [edge('A', 'B', occurrence)] },
+    expectOk: false, expectCode: 'LOCS_EDGE_OCCURRENCE_INVALID' });
+}
+const pathCases = [
+  ['line at EOF', ['src/handler.ts', 60], true],
+  ['line past trailing newline', ['src/handler.ts', 61], false, 'LOCS_LINE_OUT_OF_RANGE'],
+  ['line past no trailing newline', ['src/one.ts', 2], false, 'LOCS_LINE_OUT_OF_RANGE'],
+  ['line at CRLF EOF', ['src/crlf.ts', 2], true],
+  ['line past CRLF EOF', ['src/crlf.ts', 3], false, 'LOCS_LINE_OUT_OF_RANGE'],
+  ['empty file', ['src/empty.ts', 1], false, 'LOCS_LINE_OUT_OF_RANGE'],
+  ['directory location', ['src', 1], false, 'PATH_NOT_FILE'],
+  ['nested traversal', ['src/../../outside.ts', 1], false, 'LOCS_PATH_OUTSIDE_REPO'],
+  ['external symlink', ['src/outside.ts', 1], false, 'LOCS_PATH_OUTSIDE_REPO'],
+  ['internal symlink', ['src/inside.ts', 1], true],
+  ['removed current line shorter', ['src/one.ts', 200, 'removed'], true],
+  ['removed directory', ['src', 1, 'removed'], false, 'PATH_NOT_FILE'],
+  ['removed traversal', ['src/../../gone.ts', 1, 'removed'], false, 'LOCS_PATH_OUTSIDE_REPO'],
+  ['removed symlink ancestor', ['src/outside-dir/gone.ts', 1, 'removed'], false, 'LOCS_PATH_OUTSIDE_REPO'],
+];
+for (const [name, loc, expectOk, expectCode] of pathCases) {
+  cases.push({ name, mmd: 'flowchart TD\nA[x]', locs: { A: loc }, expectOk, expectCode });
+}
+for (const [name, loc, expectOk, expectCode] of [
+  ['edge directory', ['src', 1], false, 'PATH_NOT_FILE'],
+  ['edge line beyond EOF', ['src/auth.ts', 61], false, 'LOCS_LINE_OUT_OF_RANGE'],
+  ['edge outside repo', ['src/../../outside.ts', 1], false, 'LOCS_PATH_OUTSIDE_REPO'],
+  ['edge invalid status', ['src/auth.ts', 1, 'bad'], false, 'LOCS_DIFF_STATUS_INVALID'],
+  ['removed edge beyond EOF', ['src/one.ts', 200, 'removed'], true],
+  ['removed edge missing file', ['src/gone.ts', 200, 'removed'], true],
+]) {
+  cases.push({ name, mmd: 'flowchart TD\nA[x] --> B[y]',
+    locs: { nodes, edges: [edge('A', 'B', 1, loc)] }, expectOk, expectCode,
+    ...(name === 'removed edge missing file' ? { expectWarning: 'PATH_NOT_FOUND' } : {}) });
+}
 
 for (const c of cases) {
   if (runExpect(c, c.expectOk, c.name, c.expectCode)) pass++; else fail++;

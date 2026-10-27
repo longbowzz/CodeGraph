@@ -1,0 +1,26 @@
+{
+  "name": "mermaid",
+  "version": "11.12.0",
+  "license": "MIT",
+  "source": "https://registry.npmjs.org/mermaid/-/mermaid-11.12.0.tgz",
+  "integrity": "sha512-ZudVx73BwrMJfCFmSSJT84y6u5brEoV8DOItdHomNLz32uBjNrelm7mg95X7g+C6UoQH/W6mBLGDEDv73JdxBg==",
+  "build": "npm ci --ignore-scripts && npm run build:mermaid",
+  "patches": [
+    "Sequence renderer carries arrow-only DB index into data-cg-message group; actor dispatcher wraps all actor shapes with data-cg-actor.",
+    "Node-only DOMPurify identity shim for semantic extraction; Node box CSS validation omitted. Browser retains real DOMPurify and CSS validation."
+  ],
+  "files": {
+    "mermaid.min.js": {
+      "bytes": 2724105,
+      "sha256": "6b178c0562f78d0f186ada58e840b8391656efe437a6967afc80dabf64660f38"
+    },
+    "mermaid-parser.bundle.mjs": {
+      "bytes": 2740352,
+      "sha256": "3592553575390e278e27c2a98532a6fa4be274fb6929aa9573b25ce8f6be0011"
+    },
+    "mermaid-LICENSE": {
+      "bytes": 1089,
+      "sha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80"
+    }
+  }
+}

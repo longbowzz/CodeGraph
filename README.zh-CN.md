@@ -9,14 +9,24 @@
 把一句 *"用 CodeGraph 画一下登录流程的流程图"* 变成一个自包含的 `graph.html`，任何浏览器都能打开：
 
 - Agent 读取你的仓库，产出两个文件：
-  - `graph.mmd` — 严格 Mermaid 子集描述的拓扑。
-  - `graph.locs.json` — 每个节点的 `[file, line]` 查表。
-- 校验器检查语法、ID 对齐、路径是否存在。
-- 构建器把所有资源（dagre + 渲染器 + 你的数据）内联到一个 HTML 文件里，自带缩放 / 平移 / hover / 点击跳转。
+  - `graph.mmd` — 使用官方 Mermaid 引擎支持的语法部分来描述流程图和/或时序图（见 [Mermaid 支持范围](#mermaid-支持范围)）。
+  - `graph.locs.json` — 流程图节点与边、时序图参与者与消息的精确语义源码位置（`[file, line, status?]`）。
+- 校验器检查 Mermaid 语法、位置结构、ID/边对齐、路径和行号范围。Agent 会阅读源码上下文，确认标签与所指语句相符；校验器无法证明自然语言语义。
+- 构建器把 vendored Mermaid 引擎、渲染器、样式和图数据内联到一个 HTML 文件里，自带缩放 / 平移 / hover / 点击跳转。
 
 **评审模式**：向 Agent 提供 PR、commit 或 `base..head` 范围，它会用绿 / 橙 / 红高亮新增、修改、删除的节点与边，让评审者一眼看清改动在整体流程中的位置。
 
 生成的 HTML **零运行时依赖** —— 不需要服务器、CDN，查看方无需 `npm install`。
+
+### Mermaid 支持范围
+
+CodeGraph 使用固定版本、随项目 vendored 的官方 Mermaid **11.12.0** 引擎，打包详情见 [`vendor/mermaid-manifest.json`](skill/CodeGraph/vendor/mermaid-manifest.json)。支持范围是该固定版本接受、且 CodeGraph 流程图 / 时序图视图能够表达的 Mermaid 语法，每个文件最多包含一张流程图和/或一张时序图，其他图类型不在本契约范围内；也不代表支持 Mermaid 的所有功能。
+
+常见构造包括：`graph` / `flowchart` 的 `TD`、`TB`、`BT`、`LR`、`RL` 方向、常见节点形状、带标签和样式的边、边链、子图、class 样式、引号包裹的标签和多行标签；以及包含 actor / participant 声明（含隐式参与者）、激活、注释、`loop`、`alt`、`opt`、`par`、`critical`、`break` 片段、`rect` / `box` 分组和 `autonumber` 的时序图。此列表仅列举常见语法，并非完整兼容性清单；CodeGraph 不额外施加两层嵌套上限。请使用固定引擎版本接受、且源码导航视图能够忠实表达的语法。
+
+源码映射仍须为有语义的流程图节点和边、时序图参与者和消息精确且完整地提供。子图 / 分组容器、注释和片段标记仅用于视觉呈现，无需源码位置。渲染采用 Mermaid strict 安全模式。Mermaid 回调和链接不会取代 CodeGraph 的源码导航。外部 ELK 布局和图片 / 图标资源未打包，外部图片和图标离线时不保证可用。
+
+Mermaid 及其他浏览器资源会 vendored 到生成的 HTML 中，因此生成和查看时不需要运行时 `npm install` 或联网。用于重建 vendored 资源的开发依赖另行管理。
 
 ### 示例输出
 
@@ -32,7 +42,7 @@
 
 ### 环境要求
 
-- **Node.js 18+**（运行时只用 `node:*` 内置 ESM，无需 `npm install`，依赖全部 vendored）。
+- **Node.js 18+**（运行时使用 `node:*` 内置 ESM；生成图和查看 HTML 无需 `npm install`，开发构建依赖另行管理）。
 - 一个支持 URL scheme 的编辑器（见下表）。
 - 支持 Skill 的 AI Agent（如 Claude Code），或手动运行脚本。
 
@@ -88,6 +98,34 @@ node skill/CodeGraph/scripts/build-html.mjs \
   --editor-config /path/to/your/repo/.codegraph/config.json
 ```
 
+## 源码位置数据格式
+
+推荐的流程图格式分别记录节点位置和边位置：
+
+```json
+{
+  "flowchart": {
+    "nodes": {
+      "A": ["src/handler.ts", 12],
+      "B": ["src/auth.ts", 8, "modified"]
+    },
+    "edges": [
+      {"from": "A", "to": "B", "occurrence": 1, "loc": ["src/handler.ts", 25, "modified"]}
+    ]
+  }
+}
+```
+
+对于 `A --> B`，这里的边位置指向 handler 中实际发生调用的语句。每个位置为 `[file, line]` 或 `[file, line, status]`：路径相对于被分析仓库，行号从 1 开始且位于文件范围内，可选状态为 `added`、`modified`、`removed` 或默认的 `unchanged`。单独一张流程图也接受不带外层包装的 `{ "nodes": {...}, "edges": [...] }`。新格式必须为**每一条边**提供且仅提供一条位置记录，包括无标签、虚线、重复和链式展开后的边。
+
+边的标识为 `JSON.stringify([from, to, occurrence])`。`occurrence` 按 Mermaid 中的顺序，针对**每一对有向端点分别从 1 计数**，链式边从左到右展开。例如先有 `A --> B --> A`，再有 `A --> B`，标识依次为 `["A","B",1]`、`["B","A",1]`、`["A","B",2]`。无关边不影响计数；同一对有向端点的边重新排序时，必须同步更新位置记录。标签和样式不参与标识。
+
+时序图使用 `{ "actors": {...}, "messages": [...] }`，为所有显式或隐式参与者提供位置；消息位置严格按消息箭头顺序排列。同一文件包含两种图时，使用 `{ "flowchart": { "nodes": {...}, "edges": [...] }, "sequence": { "actors": {...}, "messages": [...] } }`。分组、注释和片段标记仅用于视觉呈现，不计入消息数量或源码映射。
+
+行为节点必须指向真正实现标签含义的语句；只有入口 / 声明节点可以指向定义行。边指向调用方实际发生调用、发布、分支或返回的语句，消息指向发送 / 调用 / 返回实际发生处。同一条真实语句可以被多处引用。Agent 必须阅读源码上下文来核对每个位置，不得编造位置或用方便的函数头代替；如果单一位置无法忠实表达含义，应拆图或收窄语义。校验器检查结构、路径和行号范围，无法证明语义对应关系。
+
+**旧格式兼容**：旧的扁平节点映射（`{ "A": [file, line], ... }`，也可以放在 `flowchart` 包装内）仍可读取，其边使用**近似源码位置回退**。新生成的图应使用完整覆盖所有边的显式 `nodes` / `edges` 格式。配对示例见 [Skill 契约](skill/CodeGraph/SKILL.md#4-graphlocsjson-format)。
+
 ## 输出结构
 
 ```
@@ -132,7 +170,7 @@ CodeGraph/
 ├── skill/CodeGraph/
 │   ├── SKILL.md                  # Agent 指令文档
 │   ├── scripts/
-│   │   ├── mermaid-parser.mjs    # 严格 Mermaid 子集解析器
+│   │   ├── mermaid-parser.mjs    # Mermaid 语法解析与图模型
 │   │   ├── validate.mjs          # schema + ID + 路径校验器
 │   │   ├── build-html.mjs        # 单页 HTML 构建器
 │   │   ├── _smoke-parser.mjs     # 解析器测试
@@ -142,8 +180,10 @@ CodeGraph/
 │   │   ├── render.js             # SVG 渲染 + 缩放/平移 + 点击处理
 │   │   └── styles.css
 │   └── vendor/
-│       ├── dagre.min.js          # 打包的 @dagrejs/dagre + graphlib
-│       └── highlight.min.js      # 打包的 highlight.js（仅 web 编辑器用）
+│       ├── mermaid-manifest.json # 固定版本和打包元数据
+│       ├── mermaid.min.js        # 固定版本的官方 Mermaid 浏览器包
+│       ├── mermaid-parser.bundle.mjs # Node.js 使用的官方 Mermaid 解析器
+│       └── highlight.min.js      # 打包的 highlight.js（源码面板）
 ├── images/                       # README 截图
 ├── LICENSE
 └── README.md

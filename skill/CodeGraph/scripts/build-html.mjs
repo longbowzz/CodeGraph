@@ -16,6 +16,7 @@ import { mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { parseMermaid, ParseError } from './mermaid-parser.mjs';
 import { getDiffStatus } from './diff-status.mjs';
+import { normalizeLocations } from './location-data.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_DIR = resolve(__dirname, '..', 'template');
@@ -53,7 +54,7 @@ const repoAbs = resolve(args.repo);
 const mmdText = readFileSync(args.mmd, 'utf8');
 let parsed;
 try {
-  parsed = parseMermaid(mmdText);
+  parsed = await parseMermaid(mmdText);
 } catch (e) {
   if (e instanceof ParseError) {
     console.error(`Error: graph.mmd failed to parse: line ${e.line}: ${e.message}`);
@@ -66,47 +67,26 @@ try {
 // 2. Parse locs
 const locsRaw = JSON.parse(readFileSync(args.locs, 'utf8'));
 
-// 3. Resolve locs shape and merge into parsed structure
-function resolveLocs(parsed, locsRaw) {
-  const out = {};
-  if (parsed.flowchart) {
-    let flat;
-    if (parsed.sequence) {
-      flat = locsRaw.flowchart || {};
-    } else if (locsRaw.flowchart && !locsRaw.sequence) {
-      flat = locsRaw.flowchart;
-    } else if (!('actors' in locsRaw) && !('messages' in locsRaw)) {
-      flat = locsRaw;
-    } else {
-      console.error(`Error: locs shape mismatch for flowchart-only graph`);
-      process.exit(1);
-    }
-    out.flowchart = {
-      ...parsed.flowchart,
-      locs: flat,
-    };
-  }
-  if (parsed.sequence) {
-    let seq;
-    if (parsed.flowchart) {
-      seq = locsRaw.sequence || {};
-    } else if (locsRaw.sequence && !locsRaw.flowchart) {
-      seq = locsRaw.sequence;
-    } else if ('actors' in locsRaw && 'messages' in locsRaw) {
-      seq = locsRaw;
-    } else {
-      console.error(`Error: locs shape mismatch for sequence-only graph`);
-      process.exit(1);
-    }
-    out.sequence = {
-      ...parsed.sequence,
-      locs: seq,
-    };
-  }
-  return out;
+// 3. Normalize locations using the same format rules as the validator.
+let locations;
+try {
+  locations = normalizeLocations(parsed, locsRaw);
+} catch (e) {
+  console.error(`Error: ${e.message}\n${e.fix_hint || ''}`);
+  process.exit(1);
 }
-
-const merged = resolveLocs(parsed, locsRaw);
+const merged = {
+  flowchart: parsed.flowchart ? {
+    ...parsed.flowchart,
+    locs: locations.flowchart.nodes,
+    ...(locations.flowchart.edges === null ? {} : {
+      edgeLocs: Object.fromEntries(locations.flowchart.edges.map(e => [
+        JSON.stringify([e.from, e.to, e.occurrence]), e.loc,
+      ])),
+    }),
+  } : null,
+  sequence: parsed.sequence ? { ...parsed.sequence, locs: locations.sequence } : null,
+};
 
 // 4. Topic: derive from filename or arg
 // Use the parent directory name of --out if available
@@ -171,6 +151,11 @@ if (merged.flowchart?.locs) {
     if (Array.isArray(v) && v[0]) paths.add(v[0]);
   }
 }
+if (merged.flowchart?.edgeLocs) {
+  for (const v of Object.values(merged.flowchart.edgeLocs)) {
+    if (Array.isArray(v) && v[0]) paths.add(v[0]);
+  }
+}
 if (merged.sequence?.locs) {
   const actors = merged.sequence.locs.actors || {};
   for (const v of Object.values(actors)) {
@@ -200,7 +185,7 @@ dataBlob.files = files;
 const pageHtml = readFileSync(resolve(TEMPLATE_DIR, 'page.html'), 'utf8');
 const renderJs = readFileSync(resolve(TEMPLATE_DIR, 'render.js'), 'utf8');
 const stylesCss = readFileSync(resolve(TEMPLATE_DIR, 'styles.css'), 'utf8');
-const dagreJs = readFileSync(resolve(VENDOR_DIR, 'dagre.min.js'), 'utf8');
+const mermaidJs = readFileSync(resolve(VENDOR_DIR, 'mermaid.min.js'), 'utf8');
 // highlight.js is required for the in-page code pane; keep it inlined so the
 // HTML stays single-file and the web editor works regardless of default editor.
 const highlightJs = readFileSync(resolve(VENDOR_DIR, 'highlight.min.js'), 'utf8');
@@ -222,12 +207,12 @@ const highlightJs = readFileSync(resolve(VENDOR_DIR, 'highlight.min.js'), 'utf8'
 const dataJson = JSON.stringify(dataBlob)
   .replace(/[<&>]/g, c => ({ '<': '\\u003c', '>': '\\u003e', '&': '\\u0026' }[c]));
 const out = pageHtml
-  .replace('__CSS__', stylesCss)
-  .replace(/__TOPIC__/g, escapeHtml(topicSlug))
-  .replace('__DAGRE__', dagreJs)
-  .replace('__HIGHLIGHT__', highlightJs)
-  .replace('__RENDER__', renderJs)
-  .replace('__DATA__', dataJson);
+  .replace('__CSS__', () => stylesCss)
+  .replace(/__TOPIC__/g, () => escapeHtml(topicSlug))
+  .replace('__MERMAID__', () => mermaidJs)
+  .replace('__HIGHLIGHT__', () => highlightJs)
+  .replace('__RENDER__', () => renderJs)
+  .replace('__DATA__', () => dataJson);
 
 // 9. Write
 mkdirSync(dirname(args.out), { recursive: true });

@@ -15,6 +15,12 @@
   --storage-fill: #ede7f6;
   --storage-stroke: #5e35b1;
   --highlight: #ffeb3b;
+  --actor-fill: #fff;
+  --actor-stroke: #888;
+  --lifeline: #aaa;
+  --message-text: #333;
+  --note-fill: #fff9c4;
+  --note-stroke: #d9a400;
   --safari-warn-bg: #fff8e1;
   --safari-warn-border: #d9a400;
   --diff-added-fill: #d4f4d4;
@@ -23,6 +29,41 @@
   --diff-modified-stroke: #cc6600;
   --diff-removed-fill: #fbd5d5;
   --diff-removed-stroke: #b31d28;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1d2128;
+    --fg: #e5e9f0;
+    --muted: #9aa4b2;
+    --accent: #78aaff;
+    --accent-soft: #29364b;
+    --node-fill: #292f38;
+    --node-stroke: #9aa4b2;
+    --node-text: #e5e9f0;
+    --edge: #b3bdca;
+    --decision-fill: #3a3422;
+    --decision-stroke: #d7ae4d;
+    --terminal-fill: #24382b;
+    --terminal-stroke: #65bb7b;
+    --storage-fill: #302a3a;
+    --storage-stroke: #ac8ce0;
+    --highlight: #4d4525;
+    --actor-fill: #292f38;
+    --actor-stroke: #9aa4b2;
+    --lifeline: #748092;
+    --message-text: #d7dde6;
+    --note-fill: #3a3422;
+    --note-stroke: #d7ae4d;
+    --safari-warn-bg: #3a3422;
+    --safari-warn-border: #d7ae4d;
+    --diff-added-fill: #24402e;
+    --diff-added-stroke: #65bb7b;
+    --diff-modified-fill: #49351f;
+    --diff-modified-stroke: #e29b46;
+    --diff-removed-fill: #492b2f;
+    --diff-removed-stroke: #e17982;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -191,96 +232,58 @@ body:not(.cg-web-mode) #splitter,
 body:not(.cg-web-mode) #code-pane { display: none; }
 svg.cg-svg { width: 100%; height: 100%; display: block; user-select: none; }
 
-/* SVG element styles */
-.cg-node rect, .cg-node polygon, .cg-node circle {
-  fill: var(--node-fill); stroke: var(--node-stroke); stroke-width: 1.5;
-  transition: fill 0.1s;
-  filter: drop-shadow(0 1px 2px rgba(0,0,0,0.08));
+/* Mermaid owns normal presentation, including user style/classDef/linkStyle.
+   CodeGraph only adds interaction targets and review attribution. */
+.cg-node[data-loc="true"], .cg-edge[data-loc="true"],
+.cg-actor[data-loc="true"], .cg-msg[data-loc="true"] { cursor: pointer; }
+.cg-edge :is(text, foreignObject), .cg-msg :is(text, foreignObject) { pointer-events: all; }
+.cg-edge .cg-edge-hit, .cg-msg .cg-msg-hit {
+  fill: none !important;
+  stroke: transparent !important;
+  stroke-width: 14 !important;
+  stroke-dasharray: none !important;
+  pointer-events: stroke;
 }
-.cg-node rect { rx: 8; }
-.cg-node text { fill: var(--node-text); font-size: 13px; pointer-events: none; user-select: none; }
-.cg-node[data-shape="decision"] polygon { fill: var(--decision-fill); stroke: var(--decision-stroke); }
-.cg-node[data-shape="terminal"] polygon { fill: var(--terminal-fill); stroke: var(--terminal-stroke); }
-.cg-node[data-shape="storage"] polygon { fill: var(--storage-fill); stroke: var(--storage-stroke); }
+.cg-node:hover, .cg-actor:hover { filter: drop-shadow(0 0 3px var(--accent)); }
+.cg-edge:hover .cg-edge-line, .cg-edge-hover .cg-edge-line,
+.cg-msg:hover .cg-msg-line { filter: drop-shadow(0 0 2px var(--accent)); }
 
-.cg-edge { --edge-color: var(--edge); }
-.cg-edge .cg-edge-line { fill: none; stroke: var(--edge-color); stroke-width: 1.5; }
-.cg-edge .cg-edge-tip { fill: var(--edge-color); stroke: none; }
-.cg-edge .cg-edge-hit { fill: none; stroke: transparent !important; stroke-width: 14 !important; stroke-dasharray: none !important; pointer-events: stroke; }
-.cg-edge text { fill: var(--edge-color); font-size: 11px; pointer-events: all; user-select: none; }
-.cg-edge-label-bg { fill: var(--bg); pointer-events: all; }
-.cg-edge[data-loc="true"] { cursor: pointer; }
-
-.cg-node:hover rect,
-.cg-node:hover polygon,
-.cg-node:hover circle { fill: var(--highlight) !important; stroke: var(--accent); stroke-width: 2; }
-.cg-node[data-loc="true"] { cursor: pointer; }
-.cg-edge:hover, .cg-edge.cg-edge-hover { --edge-color: var(--accent) !important; }
-.cg-edge:hover .cg-edge-line, .cg-edge-hover .cg-edge-line { stroke-width: 2; }
-.cg-edge:hover .cg-edge-tip, .cg-edge-hover .cg-edge-tip { transform: scale(1.333333); }
-.cg-edge:hover text, .cg-edge-hover text { fill: var(--accent); }
-
-/* Sequence */
-.cg-actor rect { fill: #fff; stroke: #888; stroke-width: 1.5; }
-.cg-actor text { font-size: 13px; pointer-events: none; user-select: none; }
-.cg-lifeline { stroke: #aaa; stroke-dasharray: 4 4; stroke-width: 1; }
-/* Sequence marker-end is set per-path so each SVG references its own defs.
-   Flowchart tips are polygons that inherit their edge group's color. */
-.cg-msg path { fill: none; stroke: #555; stroke-width: 1.5; }
-.cg-msg.cg-return path { stroke-dasharray: 5 3; }
-.cg-msg:hover path { stroke: var(--accent); stroke-width: 2.5; }
-/* Text shares the .cg-msg group's hover; let pointer events through so the
-   label is also a click/hover target, not just the 1.5px line. */
-.cg-msg text { font-size: 12px; fill: #333; pointer-events: all; cursor: pointer; }
-.cg-msg:hover text { fill: var(--accent); }
-.cg-self-loop path { fill: none; stroke: #555; stroke-width: 1.5; }
-
-.cg-note rect { fill: #fff9c4; stroke: #d9a400; stroke-width: 1; }
-.cg-note text { font-size: 11px; fill: #555; }
-
-/* ---- Diff attribution (review mode) ---- */
-/* Nodes */
-.cg-node[data-diff="added"] rect,
-.cg-node[data-diff="added"] polygon,
-.cg-node[data-diff="added"] circle,
-.cg-node[data-diff="added"] path {
-  fill: var(--diff-added-fill) !important;
-  stroke: var(--diff-added-stroke) !important;
+/* Review colors override Mermaid's generated ID-scoped styles and inline styles.
+   Hover uses a shadow, so attribution remains readable. */
+.cg-node[data-diff="added"], .cg-actor[data-diff="added"],
+.cg-edge[data-diff="added"], .cg-msg[data-diff="added"] {
+  --cg-diff-fill: var(--diff-added-fill); --cg-diff-stroke: var(--diff-added-stroke);
 }
-.cg-node[data-diff="modified"] rect,
-.cg-node[data-diff="modified"] polygon,
-.cg-node[data-diff="modified"] circle,
-.cg-node[data-diff="modified"] path {
-  fill: var(--diff-modified-fill) !important;
-  stroke: var(--diff-modified-stroke) !important;
+.cg-node[data-diff="modified"], .cg-actor[data-diff="modified"],
+.cg-edge[data-diff="modified"], .cg-msg[data-diff="modified"] {
+  --cg-diff-fill: var(--diff-modified-fill); --cg-diff-stroke: var(--diff-modified-stroke);
 }
-.cg-node[data-diff="removed"] rect,
-.cg-node[data-diff="removed"] polygon,
-.cg-node[data-diff="removed"] circle,
-.cg-node[data-diff="removed"] path {
-  fill: var(--diff-removed-fill) !important;
-  stroke: var(--diff-removed-stroke) !important;
-  stroke-dasharray: 5 3;
+.cg-node[data-diff="removed"], .cg-actor[data-diff="removed"],
+.cg-edge[data-diff="removed"], .cg-msg[data-diff="removed"] {
+  --cg-diff-fill: var(--diff-removed-fill); --cg-diff-stroke: var(--diff-removed-stroke);
 }
-
-/* Edges */
-.cg-edge[data-diff="added"] { --edge-color: var(--diff-added-stroke); }
-.cg-edge[data-diff="modified"] { --edge-color: var(--diff-modified-stroke); }
-.cg-edge[data-diff="removed"] { --edge-color: var(--diff-removed-stroke); }
-.cg-edge[data-diff="removed"] .cg-edge-line { stroke-dasharray: 5 3; }
-
-/* Sequence actors */
-.cg-actor[data-diff="added"] rect { fill: var(--diff-added-fill) !important; stroke: var(--diff-added-stroke) !important; }
-.cg-actor[data-diff="modified"] rect { fill: var(--diff-modified-fill) !important; stroke: var(--diff-modified-stroke) !important; }
-.cg-actor[data-diff="removed"] rect { fill: var(--diff-removed-fill) !important; stroke: var(--diff-removed-stroke) !important; stroke-dasharray: 5 3; }
-
-/* Sequence messages */
-.cg-msg[data-diff="added"] path { stroke: var(--diff-added-stroke) !important; }
-.cg-msg[data-diff="modified"] path { stroke: var(--diff-modified-stroke) !important; }
-.cg-msg[data-diff="removed"] path { stroke: var(--diff-removed-stroke) !important; stroke-dasharray: 5 3; }
-.cg-msg[data-diff="added"] text { fill: var(--diff-added-stroke) !important; }
-.cg-msg[data-diff="modified"] text { fill: var(--diff-modified-stroke) !important; }
-.cg-msg[data-diff="removed"] text { fill: var(--diff-removed-stroke) !important; }
+svg.cg-svg :is(.cg-node, .cg-actor):is([data-diff="added"], [data-diff="modified"], [data-diff="removed"]) :is(rect, polygon, circle, ellipse, path) {
+  fill: var(--cg-diff-fill) !important; stroke: var(--cg-diff-stroke) !important;
+}
+svg.cg-svg .cg-edge:is([data-diff="added"], [data-diff="modified"], [data-diff="removed"]) .cg-edge-line,
+svg.cg-svg .cg-msg:is([data-diff="added"], [data-diff="modified"], [data-diff="removed"]) .cg-msg-line {
+  stroke: var(--cg-diff-stroke) !important;
+}
+svg.cg-svg :is(.cg-edge, .cg-msg):is([data-diff="added"], [data-diff="modified"], [data-diff="removed"]) text {
+  fill: var(--cg-diff-stroke) !important;
+}
+svg.cg-svg :is(.cg-edge, .cg-msg):is([data-diff="added"], [data-diff="modified"], [data-diff="removed"]) foreignObject * {
+  color: var(--cg-diff-stroke) !important;
+}
+svg.cg-svg :is(.cg-node, .cg-actor)[data-diff="removed"] :is(rect, polygon, circle, ellipse, path),
+svg.cg-svg .cg-edge[data-diff="removed"] .cg-edge-line,
+svg.cg-svg .cg-msg[data-diff="removed"] .cg-msg-line { stroke-dasharray: 5 3 !important; }
+.cg-render-errors {
+  position: absolute; inset: 12px 12px auto; z-index: 5;
+  white-space: pre-wrap; padding: 10px 12px;
+  border: 1px solid var(--diff-removed-stroke); border-radius: 4px;
+  background: var(--diff-removed-fill); color: var(--fg); font-size: 12px;
+}
 
 /* Diff legend (review mode only) */
 #cg-diff-legend {
@@ -309,9 +312,6 @@ svg.cg-svg { width: 100%; height: 100%; display: block; user-select: none; }
 .cg-legend-modified { background: var(--diff-modified-fill); border-color: var(--diff-modified-stroke); }
 .cg-legend-removed  { background: var(--diff-removed-fill);  border-color: var(--diff-removed-stroke); stroke-dasharray: 2 2; }
 .cg-legend-unchanged { background: var(--node-fill); border-color: var(--node-stroke); }
-
-.cg-block rect { fill: rgba(43,124,255,0.05); stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 2; }
-.cg-block text { font-size: 11px; fill: var(--accent); font-weight: 600; }
 
 footer { padding: 6px 16px; border-top: 1px solid #ddd; font-size: 11px; color: var(--muted); background: #fff; flex-shrink: 0; }
 
@@ -355,3 +355,16 @@ body.cg-web-mode .cg-line-content .hljs-emphasis { color: #24292e; font-style: i
 body.cg-web-mode .cg-line-content .hljs-strong { color: #24292e; font-weight: bold; }
 body.cg-web-mode .cg-line-content .hljs-addition { color: #22863a; background-color: #f0fff4; }
 body.cg-web-mode .cg-line-content .hljs-deletion { color: #b31d28; background-color: #ffeef0; }
+
+@media (prefers-color-scheme: dark) {
+  header, footer, header select, header button, .tab, #code-pane,
+  #code-pane-header, #cg-diff-legend { background: var(--bg); color: var(--fg); border-color: #444c58; }
+  #canvas-wrap { background: #181c22; }
+  #splitter { background: #343b46; border-color: #444c58; }
+  .cg-diff-hunk-header { background: #2c333e; color: var(--muted); }
+  .cg-diff-add { background: var(--diff-added-fill); }
+  .cg-diff-del, .cg-file-deleted-banner { background: var(--diff-removed-fill); }
+  .cg-code-line .cg-line-num { border-color: #444c58; }
+  #code-pane-body { color: #d7dde6; }
+  body.cg-web-mode .cg-line-content [class^="hljs-"] { color: #d7dde6; }
+}
