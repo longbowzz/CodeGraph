@@ -16,6 +16,12 @@ Turn a request like *"use CodeGraph to draw the login flow as a flowchart"* into
 
 **Review mode**: give the agent a PR, commit, or `base..head` range and it highlights added / modified / removed nodes and edges so reviewers see the change in context.
 
+**CodeWalkthrough** (second workflow): ask the agent to explain a module or flow.
+It produces a single-file, long-form interactive explainer with inline SVG/CSS/JS,
+source links, and a collapsible source pane in a browser; in DSH the source link
+opens the Harness code pane. The intake can also add an optional 3–5 question
+self-test at the end, with multiple-choice or click-to-reveal answers.
+
 The HTML has **zero runtime dependencies** — no server, no CDN, no `npm install` on the viewer's machine.
 
 ### Mermaid support
@@ -61,10 +67,13 @@ Or copy the `skill/CodeGraph/` directory into a project-local `.claude/skills/Co
 
 The [`dsh/`](dsh/README.md) bundle adds CodeGraph to DeepSeek Harness:
 
-- a `codegraph` runtime skill and `codegraph_build` / `codegraph_list` tools;
-- a chat result card for every build;
-- a right-sidebar graph tab; clicking a node, edge, message, or actor opens that
-  source line in the Harness preview.
+- a `codegraph` runtime skill and `codegraph_build` / `codegraph_list` tools
+  for diagrams;
+- a `codegraph_walkthrough_build` tool for interactive
+  CodeWalkthrough explainers;
+- chat result cards for builds;
+- a right-sidebar graph/walkthrough tab; clicking a source reference opens that
+  line in the Harness preview.
 
 Install the local bundle from DSH by asking the agent:
 
@@ -82,6 +91,17 @@ Then ask:
 The agent loads the `codegraph` skill, produces the graph, and returns a card.
 Click **Open graph**, then click any graph element to jump to its source line.
 If the skill, tools, or graph tab do not appear, reload the DSH page.
+
+For a guided explainer instead of a diagram, ask:
+
+> Use CodeGraph to explain the refund flow as an interactive webpage.
+
+The agent asks a few intake questions, reads the relevant code and tests, and
+builds a single-file `walkthrough.html` with vertically scrolling sections, inline SVG/CSS/JS,
+and source links. In a browser it has a collapsible source pane; in DSH it uses
+the Harness source pane. It runs a static and runtime self-check before
+returning the artifact. See the
+[CodeWalkthrough contract](skill/CodeGraph/references/walkthrough.md).
 
 See [`dsh/README.md`](dsh/README.md) for configuration and limitations.
 
@@ -125,6 +145,28 @@ node skill/CodeGraph/scripts/build-html.mjs \
   --out path/to/graph.html \
   --editor-config /path/to/your/repo/.codegraph/config.json
 ```
+
+#### CodeWalkthrough
+
+CodeWalkthrough is the second workflow of the same skill. The agent writes a
+body-fragment HTML file with `section.cw-section` sections and `data-source` /
+`data-code` references, then builds:
+
+```bash
+node skill/CodeGraph/scripts/build-walkthrough.mjs \
+  --content path/to/content.html \
+  --repo /path/to/your/repo \
+  --topic "Refund flow" \
+  --language en
+
+node skill/CodeGraph/scripts/verify-walkthrough.mjs \
+  --file /path/to/your/repo/.codegraph/output/<stamp>-refund-flow/walkthrough.html \
+  --repo /path/to/your/repo
+```
+
+The output is a single `walkthrough.html`; open it in a browser for the
+collapsible source pane, or in DSH for the Harness code pane. See the
+[CodeWalkthrough contract](skill/CodeGraph/references/walkthrough.md).
 
 ## Location data format
 
@@ -186,9 +228,12 @@ flowchart and sequence examples.
 ├── config.json                              # editor choice (auto-generated)
 └── output/
     └── <YYYYMMDD-HHMM>-<topic-slug>/
-        ├── graph.mmd                        # topology
-        ├── graph.locs.json                  # file:line lookup
-        └── graph.html                       # final single-page output
+        ├── graph.mmd                        # topology (graph workflow)
+        ├── graph.locs.json                  # file:line lookup (graph workflow)
+        ├── graph.html                       # final graph artifact
+        ├── walkthrough.html                 # CodeWalkthrough artifact
+        ├── walkthrough.meta.json            # CodeWalkthrough metadata
+        └── walkthrough.content.html         # authored body fragment
 ```
 
 Each invocation produces a new timestamped subdirectory — history is preserved, never overwritten.

@@ -6,13 +6,19 @@ This bundle turns [CodeGraph](../../README.md) into a Harness capability:
 
 - **Skill** — `codegraph` teaches the agent the Mermaid + source-location contract.
 - **Tools** — `codegraph_build` validates and builds a graph in one call;
-  `codegraph_list` finds earlier artifacts.
+  `codegraph_walkthrough_build` builds an explainer; `codegraph_list` finds
+  earlier artifacts of both kinds.
 - **Chat card** — every build reports its topic, diagram kinds, stats, and
   validation errors, with a button that opens the graph.
 - **Graph tab** — generated `.codegraph/output/**/graph.html` files open in a
   dedicated right-Sidebar tab. Clicking a node, edge, sequence message, or
   actor opens the exact source line in the Harness source preview, preferably
   in a second pane.
+- **CodeWalkthrough** — the same CodeGraph skill can also build an interactive
+  long-form explainer. `codegraph_walkthrough_build` writes
+  `.codegraph/output/**/walkthrough.html`; the page has sections, inline
+  SVG/CSS/JS, source links, and a collapsible browser source pane. In DSH the
+  source link opens the Harness code pane instead.
 
 ## Install
 
@@ -45,24 +51,43 @@ Clicking a node, edge, message, or actor opens the **current source** at that
 line. DSH's native changed-files review tab is turn-scoped and is not opened per
 graph element; use the separate changes review when you need a diff.
 
+For an explainer instead of a diagram:
+
+> Use CodeGraph to explain the refund flow as an interactive webpage.
+
+CodeWalkthrough asks the intake questions first, including whether to add a
+3–5 question self-test, reads the relevant code and tests, then calls
+`codegraph_walkthrough_build` with a free-form HTML body fragment and source
+references. If requested, the quiz sits at the end with click-to-reveal or
+multiple-choice answers. The tool embeds the actual source, assembles the shell,
+and runs the static self-check before returning. The content remains objective
+only when the agent uses the evidence table and the runtime check in
+`window.__cwCheck()`.
+
 ## Layout
 
 ```text
 dsh/
 ├── index.js             Host: skill + tools
-├── client.js            Web: result card + graph tab
-├── lib/build.js         validation/build/list pipeline
+├── client.js            Web: result cards + graph/walkthrough tabs
+├── lib/build.js         graph validation/build/list pipeline
+├── lib/walkthrough.js   walkthrough invocation + self-check wrapper
 ├── skill-adapter.md     DSH runtime overrides prepended to SKILL.md
 ├── cordis.patch.yml     bundle row
 ├── locale/{en,zh}.json  plugin-manager metadata
 └── icon.svg
 ```
 
-The renderer is shared with the standalone skill. It gains a sandbox-safe
+The graph renderer is shared with the standalone skill. It gains a sandbox-safe
 `localStorage` guard, persistent selection (clicking blank canvas clears it),
 and a one-row header with a truncated topic. DSH-specific hooks are gated by
 `#dsh`: a `postMessage` bridge, a presentation mode that hides the in-page Web
 code pane, editor picker, and workspace path while the file is framed by the
 graph tab, and a file/function/line card at the graph's right edge. A standalone
 browser renders neither the card nor the ruler, and keeps its Web code pane.
-The same HTML still opens normally in a browser.
+
+CodeWalkthrough has its own shell under
+`../skill/CodeGraph/template/walkthrough/`. It embeds the referenced source
+into a single HTML file so the browser pane works offline; in DSH the shell
+hides that pane and posts `codewalk.navigate` to the tab. Its workflow contract
+is `../skill/CodeGraph/references/walkthrough.md`.

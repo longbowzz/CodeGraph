@@ -16,6 +16,10 @@
 
 **评审模式**：向 Agent 提供 PR、commit 或 `base..head` 范围，它会用绿 / 橙 / 红高亮新增、修改、删除的节点与边，让评审者一眼看清改动在整体流程中的位置。
 
+**CodeWalkthrough**（第二个 workflow）：让 agent 讲解一个模块或流程，生成单文件、上下滚动的长文
+讲解页，内联 SVG/CSS/JS 与源码引用；普通浏览器有可折叠的右侧源码分栏，DSH 中则打开自带
+源码 pane。初始询问可以要求加 3–5 道自测题，放在最后，支持选项判分或点击查看答案。
+
 生成的 HTML **零运行时依赖** —— 不需要服务器、CDN，查看方无需 `npm install`。
 
 ### Mermaid 支持范围
@@ -61,9 +65,10 @@ ln -s "$(pwd)/CodeGraph/skill/CodeGraph" ~/.claude/skills/CodeGraph
 
 [`dsh/`](dsh/README.zh-CN.md) 把 CodeGraph 接入 DeepSeek Harness：
 
-- `codegraph` 运行时 Skill，以及 `codegraph_build` / `codegraph_list` 工具；
+- `codegraph` 运行时 Skill，以及 `codegraph_build` / `codegraph_list` 画图工具；
+- `codegraph_walkthrough_build` 工具，用于生成长文式、可交互的 CodeWalkthrough 讲解页；
 - 每次构建的对话结果卡片；
-- 右侧栏图 tab；点击节点、箭头、消息或 actor 会在 Harness 源码预览中打开对应行。
+- 右侧栏图/讲解页 tab；点击源码引用会在 Harness 源码预览中打开对应行。
 
 在 DSH 里让 agent 安装本地 bundle：
 
@@ -78,6 +83,15 @@ ln -s "$(pwd)/CodeGraph/skill/CodeGraph" ~/.claude/skills/CodeGraph
 > 用 CodeGraph 画一下登录流程的时序图。
 
 agent 会加载 `codegraph` Skill、生成图并返回卡片。点 **Open graph**，再点图中的节点/箭头/消息即可跳到对应源码行。如果 Skill、工具或图 tab 没出现，刷新一次 DSH 页面。
+
+如果要的是一篇讲解网页而不是图，可以说：
+
+> 用 CodeGraph 为我介绍退款流程，做成一个可交互的网页。
+
+agent 会先问几个问题明确读者、范围、深度，再阅读相关代码和测试，生成单文件
+`walkthrough.html`：上下滚动的长文、内联 SVG/CSS/JS、源码引用。普通浏览器中有可折叠的右侧
+源码分栏；DSH 中使用自带源码 pane。交付前会做静态和运行时自检。详见
+[CodeWalkthrough 契约](skill/CodeGraph/references/walkthrough.md)。
 
 配置与限制见 [`dsh/README.zh-CN.md`](dsh/README.zh-CN.md)。
 
@@ -122,6 +136,26 @@ node skill/CodeGraph/scripts/build-html.mjs \
   --editor-config /path/to/your/repo/.codegraph/config.json
 ```
 
+#### CodeWalkthrough
+
+CodeWalkthrough 是同一个 Skill 的第二个 workflow。Agent 先写一个内容 HTML 片段，
+用 `section.cw-section` 分节，用 `data-source` / `data-code` 引用源码，然后构建：
+
+```bash
+node skill/CodeGraph/scripts/build-walkthrough.mjs \
+  --content path/to/content.html \
+  --repo /path/to/your/repo \
+  --topic "退款流程" \
+  --language zh
+
+node skill/CodeGraph/scripts/verify-walkthrough.mjs \
+  --file /path/to/your/repo/.codegraph/output/<stamp>-退款流程/walkthrough.html \
+  --repo /path/to/your/repo
+```
+
+产物是单个 `walkthrough.html`；普通浏览器中有可折叠的源码分栏，DSH 中使用自带
+源码 pane。详见 [CodeWalkthrough 契约](skill/CodeGraph/references/walkthrough.md)。
+
 ## 源码位置数据格式
 
 推荐的流程图格式分别记录节点位置和边位置：
@@ -157,9 +191,12 @@ node skill/CodeGraph/scripts/build-html.mjs \
 ├── config.json                              # 编辑器选择（自动生成）
 └── output/
     └── <YYYYMMDD-HHMM>-<topic-slug>/
-        ├── graph.mmd                        # 拓扑
-        ├── graph.locs.json                  # file:line 查表
-        └── graph.html                       # 最终单页输出
+        ├── graph.mmd                        # 拓扑（图 workflow）
+        ├── graph.locs.json                  # file:line 查表（图 workflow）
+        ├── graph.html                       # 最终图产物
+        ├── walkthrough.html                 # CodeWalkthrough 产物
+        ├── walkthrough.meta.json            # CodeWalkthrough 元数据
+        └── walkthrough.content.html         # 内容 HTML 片段
 ```
 
 每次调用都会产生一个新的时间戳子目录 —— 历史保留，不会覆盖。

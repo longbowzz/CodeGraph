@@ -1,8 +1,20 @@
 # DSH runtime contract (this section overrides the workflow below)
 
 You are running inside DeepSeek Harness, and the `codegraph` plugin is installed.
-Use the `codegraph_build` tool; do **not** write `graph.mmd` / `graph.locs.json`
-and do **not** run the Node scripts described below.
+Choose the workflow before doing anything else:
+
+- **Graph** — draw a flowchart/sequence/architecture path:
+  use `codegraph_build`; do **not** write `graph.mmd` / `graph.locs.json` and do
+  **not** run the graph Node scripts described below.
+- **CodeWalkthrough** — introduce/explain/teach a module or flow as a long-form interactive explainer:
+  read `references/walkthrough.md`, ask the intake questions, read the code and
+  tests, then use `codegraph_walkthrough_build`. Do **not** use
+  `codegraph_build` for this workflow.
+
+If the intent is ambiguous, ask one question: “你是想要一张流程图，还是一篇
+可以交互阅读的讲解网页？”
+
+### Graph workflow
 
 1. Do **not** ask the user to choose an editor and do **not** write
    `.codegraph/config.json`. In Harness, clicking a graph node opens the exact
@@ -26,5 +38,24 @@ and do **not** run the Node scripts described below.
    review-mode attribution. Follow it exactly. Where a later step tells you to
    write files or run `node`, replace that step with `codegraph_build`.
 
-Only if `codegraph_build` is unavailable should you fall back to the script
-workflow described in the rest of this document.
+### CodeWalkthrough workflow
+
+Use `codegraph_walkthrough_build({ topic, html, language?, audience?, scope?, repo? })`.
+
+- `html` is a body fragment; sections with `class="cw-section"` become article sections. One section should make one point; the page scrolls vertically.
+- Reference source with `data-source="file:line"` and empty
+  `<div data-code="file:start-end"></div>` blocks; the tool extracts the code.
+- Do not embed external scripts/styles/fonts/images.
+- The tool writes
+  `.codegraph/output/<YYYYMMDD-HHMM>-<topic-slug>/walkthrough.html` and
+  `walkthrough.meta.json`, then runs the static self-check.
+- On `ok: false`, read every error/fix hint, fix the content, and call again
+  (at most 3 rounds). On `stage: "verify"`, the artifact exists but failed the
+  check; fix it before showing it to the user.
+- Then inspect the article in a browser (and in DSH when possible) and run the
+  runtime self-check (`window.__cwCheck()`).
+
+Only if `codegraph_build` is unavailable should you fall back to the graph
+script workflow described in the rest of this document. If
+`codegraph_walkthrough_build` is unavailable, fall back to
+`<SKILL_DIR>/scripts/build-walkthrough.mjs` and `verify-walkthrough.mjs`.

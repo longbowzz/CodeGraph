@@ -1,0 +1,129 @@
+<section class="cw-hero cw-section" id="overview" data-title="总览">
+  <div class="cw-file">dsh/index.js · CodeGraph DSH plugin · 18 files</div>
+  <h1>把 <em>Mermaid</em> 变成一张 <em>可点击的图</em></h1>
+  <p class="cw-lead">
+    <strong>CodeGraph 的 DSH 插件只做一件事：</strong>把 agent 生成的 Mermaid 和位置表，
+    变成一张能点回源码的图。它不碰业务逻辑，也不在浏览器里做运行时编译。
+  </p>
+  <div class="cw-cards cw-c3">
+    <div class="cw-card">
+      <span class="cw-card-tag">input</span>
+      <h3>Mermaid + 位置表</h3>
+      <p>节点、边、消息各自对应一条真实源码位置；这是导航的协议。</p>
+    </div>
+    <div class="cw-card">
+      <span class="cw-card-tag">build</span>
+      <h3>校验后再构建</h3>
+      <p>先跑 validate，再把模板、样式、源码和运行时打包成单个 HTML。</p>
+    </div>
+    <div class="cw-card">
+      <span class="cw-card-tag">view</span>
+      <h3>图 tab 负责展示</h3>
+      <p>卡片打开右侧栏；点击图元，由宿主打开对应源码行。</p>
+    </div>
+  </div>
+</section>
+
+<section class="cw-section" id="pipeline" data-title="六个阶段">
+  <p class="cw-kicker">01 · Big picture</p>
+  <h2>一次构建，六个阶段</h2>
+  <p>从 tool call 到图 tab，每一段只负责一件事；任何一段失败，都不应该产出半成品。</p>
+  <div class="cw-pipeline">
+    <div class="cw-step cw-step--accent"><div class="cw-step-n">01</div><div class="cw-step-t">调用</div><div class="cw-step-s">codegraph_build</div></div>
+    <div class="cw-arrow">→</div>
+    <div class="cw-step"><div class="cw-step-n">02</div><div class="cw-step-t">校验</div><div class="cw-step-s">validate.mjs</div></div>
+    <div class="cw-arrow">→</div>
+    <div class="cw-step"><div class="cw-step-n">03</div><div class="cw-step-t">构建</div><div class="cw-step-s">build-html.mjs</div></div>
+    <div class="cw-arrow">→</div>
+    <div class="cw-step"><div class="cw-step-n">04</div><div class="cw-step-t">落 meta</div><div class="cw-step-s">graph.meta.json</div></div>
+    <div class="cw-arrow">→</div>
+    <div class="cw-step"><div class="cw-step-n">05</div><div class="cw-step-t">卡片</div><div class="cw-step-s">chat result</div></div>
+    <div class="cw-arrow">→</div>
+    <div class="cw-step"><div class="cw-step-n">06</div><div class="cw-step-t">图 tab</div><div class="cw-step-s">sidebar right</div></div>
+  </div>
+  <div class="cw-note"><strong>关键分界：</strong>校验在临时目录完成；只有通过校验，才会把产物移动到最终输出目录。</div>
+</section>
+
+<section class="cw-section" id="entry" data-title="入口">
+  <p class="cw-kicker">02 · The entry</p>
+  <h2>入口只是一个 tool call</h2>
+  <p>它先确认 repo 在工作区内，然后把 Mermaid 和位置表交给 <a href="#" data-source="dsh/lib/build.js:250">buildDiagram</a>。</p>
+  <div class="cw-split">
+    <div data-code="dsh/index.js:277-289"></div>
+    <div class="cw-points">
+      <div class="cw-point"><div class="cw-point-n">1</div><div><div class="cw-point-t">限定工作区</div><div class="cw-point-x">repo 不能跑出 session workspace。</div></div></div>
+      <div class="cw-point"><div class="cw-point-n">2</div><div><div class="cw-point-t">只传语义输入</div><div class="cw-point-x">Mermaid + 位置表，不传渲染细节。</div></div></div>
+      <div class="cw-point"><div class="cw-point-n">3</div><div><div class="cw-point-t">交给管线</div><div class="cw-point-x">校验、构建、错误修复都在下一层。</div></div></div>
+      <div class="cw-warn"><strong>注意：</strong>tool 层不直接拼 HTML；它只负责边界和路径。</div>
+    </div>
+  </div>
+</section>
+
+<section class="cw-section" id="source-link" data-title="源码链路">
+  <p class="cw-kicker">03 · Source link</p>
+  <h2>为什么点一下就能到源码</h2>
+  <p>图里存的是 <code>file:line</code>，不是一段被复制进 HTML 的代码；点击后由宿主决定打开哪里。</p>
+  <div class="cw-split">
+    <div class="cw-visual">
+      <svg viewBox="0 0 620 210" role="img" aria-label="点击图元后，桥接消息把 file line 交给 Harness 源码面板">
+        <defs>
+          <marker id="cw-source-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="currentColor"/></marker>
+        </defs>
+        <g font-family="ui-sans-serif, sans-serif" font-size="13" fill="currentColor">
+          <rect x="10" y="58" width="160" height="88" rx="12" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="90" y="92" text-anchor="middle" font-weight="700">图元</text>
+          <text x="90" y="114" text-anchor="middle" fill="#8b8b93" font-size="11">file:line</text>
+          <line x1="178" y1="102" x2="238" y2="102" stroke="currentColor" stroke-width="1.5" marker-end="url(#cw-source-arrow)"/>
+          <rect x="248" y="48" width="150" height="108" rx="12" fill="none" stroke="#0b5fff" stroke-width="1.5"/>
+          <text x="323" y="88" text-anchor="middle" font-weight="700" fill="#0b5fff">postMessage</text>
+          <text x="323" y="110" text-anchor="middle" fill="#8b8b93" font-size="11">token + file + line</text>
+          <line x1="406" y1="102" x2="466" y2="102" stroke="currentColor" stroke-width="1.5" marker-end="url(#cw-source-arrow)"/>
+          <rect x="476" y="48" width="134" height="108" rx="12" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          <text x="543" y="88" text-anchor="middle" font-weight="700">源码 pane</text>
+          <text x="543" y="110" text-anchor="middle" fill="#8b8b93" font-size="11">openResource</text>
+        </g>
+      </svg>
+      <div class="cw-chart-cap">点击 → 桥接 → Harness 源码 pane；浏览器里则打开右侧源码抽屉。</div>
+    </div>
+    <div class="cw-points">
+      <div class="cw-point"><div class="cw-point-n">A</div><div><div class="cw-point-t">位置表是唯一事实</div><div class="cw-point-x">节点/边/消息都映射到真实语句。</div></div></div>
+      <div class="cw-point"><div class="cw-point-n">B</div><div><div class="cw-point-t">渲染与导航解耦</div><div class="cw-point-x">图只负责发位置；谁打开、怎么开由宿主决定。</div></div></div>
+      <div class="cw-point"><div class="cw-point-n">C</div><div><div class="cw-point-t">内容可独立打开</div><div class="cw-point-x">没有 DSH 时，页内源码抽屉就是 fallback。</div></div></div>
+      <p class="cw-small cw-muted">实现锚点：<a href="#" data-source="dsh/client.js:561">右侧栏 iframe 桥接</a></p>
+    </div>
+  </div>
+</section>
+
+<section class="cw-section" id="boundaries" data-title="边界">
+  <p class="cw-kicker">04 · Boundaries</p>
+  <h2>三个容易误解的边界</h2>
+  <p>图看起来很确定，但它的可信度来自“位置可核对”，不是“解释自动正确”。</p>
+  <div class="cw-cards cw-c3">
+    <div class="cw-card"><span class="cw-card-tag">validator</span><h3>校验 ≠ 语义正确</h3><p>校验器能检查语法、覆盖、路径和行号，不能证明“这段代码真的实现了这个业务含义”。</p></div>
+    <div class="cw-card"><span class="cw-card-tag">source</span><h3>源码会变</h3><p>产物是当前 checkout 的快照；代码改动后，行号可能漂移，需要重新构建。</p></div>
+    <div class="cw-card"><span class="cw-card-tag">content</span><h3>讲解仍需证据</h3><p>每个关键判断都要回到代码/测试；推断要标注，业务背景缺失时不要脑补。</p></div>
+  </div>
+  <div class="cw-pit"><strong>最危险的情况：</strong>图能点、页面好看、但一个关键业务假设是模型猜的。源码链接不能替代证据。</div>
+</section>
+
+<section class="cw-section" id="quiz" data-title="自测">
+  <p class="cw-kicker">05 · 自测</p>
+  <h2>两道题，检查你是否真的理解</h2>
+  <p>先自己回答，再点选项或“查看答案”。</p>
+  <div class="cw-quiz">
+    <div class="cw-q" data-answer="b">
+      <div class="cw-q-title">Q1. 一次构建里，哪一步应该发生在“把产物移动到最终目录”之前？</div>
+      <div class="cw-q-opts">
+        <button type="button" class="cw-q-opt" data-opt="a">A. 打开图 tab</button>
+        <button type="button" class="cw-q-opt" data-opt="b">B. 在临时目录完成校验</button>
+        <button type="button" class="cw-q-opt" data-opt="c">C. 在对话里展示结果卡片</button>
+      </div>
+      <div class="cw-q-fb"><strong>答案：B。</strong>校验失败不能产出半成品，所以校验发生在临时目录；只有通过后才 rename 到最终输出目录。</div>
+    </div>
+    <div class="cw-q">
+      <div class="cw-q-title">Q2. 为什么图里存 <code>file:line</code>，而不是直接把源码抄进 HTML？</div>
+      <button type="button" class="cw-reveal" data-reveal="quiz-q2-answer">查看答案</button>
+      <div class="cw-answer" id="quiz-q2-answer" hidden><strong>参考：</strong>位置是可核对的协议，源码是事实来源。直接抄代码容易过期、抄错，也无法让宿主打开完整文件；存位置则可以随时打开当前源码。</div>
+    </div>
+  </div>
+</section>

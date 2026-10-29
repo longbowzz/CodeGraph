@@ -62,9 +62,13 @@ The output directory `<repo>/.codegraph/output/` is created on demand.
 
 ---
 
-## 1. When to Trigger
+## 1. Choose the workflow
 
-Trigger this skill when the user's message:
+This skill has two workflows. Pick one before doing anything else.
+
+### 1.1 Graph workflow
+
+Trigger it when the user's message:
 
 - Contains the literal token **"CodeGraph"** (any case) AND one of:
   - "流程图" / "flowchart"
@@ -72,9 +76,36 @@ Trigger this skill when the user's message:
   - "调用流程" / "call flow"
   - "流程" / "flow"
   - "PR" / "commit" / "diff" / "review" / "改动" / "变更" / "评审"
-- OR explicitly says "use CodeGraph" / "用 CodeGraph 技能".
+- OR explicitly says "use CodeGraph" / "用 CodeGraph 技能" together with a
+  request to draw, visualize, map, or review.
 
-Do **not** trigger on generic "explain the code" or "draw me a diagram" requests.
+If the request is primarily "介绍 / 讲解 / 科普 / 写网页 / 教程 / 原理", use the
+CodeWalkthrough workflow below instead, even if it also contains the word "流程".
+
+The rest of this file is the graph contract. Follow it exactly for this workflow.
+
+### 1.2 CodeWalkthrough workflow
+
+Trigger it when the user asks CodeGraph to **explain, introduce, teach, or build
+a long-form interactive explainer** about a module or flow, including:
+
+- "介绍 / 讲解 / 科普 / 说明 / 教程 / 原理 / 深入理解"
+- "写一个网页介绍 / 做一个讲解页面 / 生成一个学习页面"
+- "用 CodeGraph 为我介绍 XX 流程"
+- "用 CodeGraph 写一个网页介绍 XXX 模块"
+
+Read `references/walkthrough.md` **before** gathering evidence or writing the
+page. That file defines the intake questions, the evidence table, the page
+structure, the content/source-link format, the build command, and the self-check
+protocol. Do not use the graph contract for this workflow.
+
+If the user's intent is ambiguous (for example just "用 CodeGraph 看一下这个模块"),
+ask exactly one question:
+
+> 你是想要一张流程图，还是一篇可以交互阅读的讲解网页？
+
+Do not trigger either workflow on generic "explain the code" or "draw me a
+diagram" requests that do not mention CodeGraph.
 
 ---
 
