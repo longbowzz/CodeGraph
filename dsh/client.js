@@ -1,12 +1,13 @@
 // CodeGraph for DeepSeek Harness — Client half.
 //
-// Two surfaces:
-//   1. a chat result card for `codegraph_build`, and
-//   2. a right-Sidebar tab type for generated `.codegraph/output/**/graph.html`
-//      files. The tab frames the existing self-contained renderer and relays
-//      node clicks to the harness's own source preview.
+// Surfaces:
+//   1. a chat result card for `codegraph_build`;
+//   2. a chat result card for `codegraph_walkthrough_build`;
+//   3. right-Sidebar tab types for generated `.codegraph/output/**/graph.html`
+//      and `walkthrough.html` files. Each tab frames the self-contained artifact
+//      and relays source clicks to the harness's own source preview.
 //
-// The renderer stays the single source of truth; this file only supplies host
+// The artifacts stay the single source of truth; this file only supplies host
 // chrome, loading state, and the source-jump bridge.
 
 window.__ModuleLoader__.load({
@@ -17,6 +18,7 @@ window.__ModuleLoader__.load({
 
     const NS = 'codegraph'
     const GRAPH_TAB_ID = '@longbowzz/dsh-codegraph/graph'
+    const WALKTHROUGH_TAB_ID = '@longbowzz/dsh-codegraph/walkthrough'
 
     const zh = {
       'card.title': 'CodeGraph',
@@ -46,6 +48,27 @@ window.__ModuleLoader__.load({
       'tab.unavailable': '找不到这张图的来源信息，暂时无法跳转源码。',
       'tab.frameTitle': 'CodeGraph 图',
       'tab.title': 'CodeGraph',
+      'cw.title': 'CodeWalkthrough',
+      'cw.running': '正在生成讲解页…',
+      'cw.ok': '已生成',
+      'cw.invalid': '自检失败',
+      'cw.failed': '生成失败',
+      'cw.open': '打开讲解页',
+      'cw.pages': '{count} 节',
+      'cw.sources': '{count} 个源码文件',
+      'cw.verified': '自检通过',
+      'cw.verifyFailed': '自检失败',
+      'cw.more': '还有 {count} 个错误',
+      'cw.noMeta': '讲解页已生成，但结果信息不完整。',
+      'cw.summary': '{facts}',
+      'cw.tab.loading': '正在加载讲解页…',
+      'cw.tab.error': '无法加载讲解页',
+      'cw.tab.retry': '重试',
+      'cw.tab.reload': '重新加载',
+      'cw.tab.removed': '该位置在本次 diff 中已删除。',
+      'cw.tab.unavailable': '找不到这个讲解页的来源信息，暂时无法跳转源码。',
+      'cw.tab.frameTitle': 'CodeWalkthrough 讲解页',
+      'cw.tab.title': 'CodeWalkthrough',
     }
 
     const en = {
@@ -76,6 +99,27 @@ window.__ModuleLoader__.load({
       'tab.unavailable': 'The source location for this graph is unavailable.',
       'tab.frameTitle': 'CodeGraph',
       'tab.title': 'CodeGraph',
+      'cw.title': 'CodeWalkthrough',
+      'cw.running': 'Generating walkthrough…',
+      'cw.ok': 'Built',
+      'cw.invalid': 'Self-check failed',
+      'cw.failed': 'Build failed',
+      'cw.open': 'Open walkthrough',
+      'cw.pages': '{count} sections',
+      'cw.sources': '{count} source files',
+      'cw.verified': 'Self-check passed',
+      'cw.verifyFailed': 'Self-check failed',
+      'cw.more': '{count} more error(s)',
+      'cw.noMeta': 'The walkthrough was built, but its result metadata is incomplete.',
+      'cw.summary': '{facts}',
+      'cw.tab.loading': 'Loading walkthrough…',
+      'cw.tab.error': 'Could not load walkthrough',
+      'cw.tab.retry': 'Retry',
+      'cw.tab.reload': 'Reload',
+      'cw.tab.removed': 'This location was removed in the diff.',
+      'cw.tab.unavailable': 'The source location for this walkthrough is unavailable.',
+      'cw.tab.frameTitle': 'CodeWalkthrough',
+      'cw.tab.title': 'CodeWalkthrough',
     }
 
     function fill(text, values) {
@@ -125,6 +169,20 @@ window.__ModuleLoader__.load({
       if (parsed === null) return 'CodeGraph'
       const directory = parsed.path.replace(/\\/g, '/').replace(/\/graph\.html$/i, '').split('/').pop() || ''
       return directory.replace(/^\d{8}-\d{4}-/, '') || 'CodeGraph'
+    }
+
+    function isWalkthroughAddress(address) {
+      const parsed = parseFileAddress(address)
+      if (parsed === null) return false
+      const path = parsed.path.replace(/\\/g, '/')
+      return /(?:^|\/)\.codegraph\/(?:[^/]+\/)*walkthrough\.html$/.test(path)
+    }
+
+    function walkthroughTitle(address) {
+      const parsed = parseFileAddress(address)
+      if (parsed === null) return 'CodeWalkthrough'
+      const directory = parsed.path.replace(/\\/g, '/').replace(/\/walkthrough\.html$/i, '').split('/').pop() || ''
+      return directory.replace(/^\d{8}-\d{4}-/, '') || 'CodeWalkthrough'
     }
 
     function normalizeMeta(meta) {
@@ -292,6 +350,81 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function CodeWalkthroughCard(props) {
+      const { phase, block, openFile } = props
+      const t = typeof props.t === 'function' ? props.t : (key) => key
+      const meta = normalizeMeta(block?.meta)
+      const [showErrors, setShowErrors] = React.useState(false)
+
+      if (phase !== 'result') {
+        return h('div', { className: 'cg-card', 'data-codewalkthrough-card': 'running' },
+          h('style', null, CARD_CSS),
+          h('div', { className: 'cg-head' },
+            h('span', { className: 'cg-dot' }),
+            h('span', { className: 'cg-title' }, t('cw.title')),
+            h('span', { className: 'cg-badge' }, t('cw.running')),
+          ),
+        )
+      }
+
+      if (block?.isError || meta === null) {
+        const text = resultText(block)
+        const state = block?.isError ? 'failed' : 'invalid'
+        return h('div', { className: 'cg-card', 'data-codewalkthrough-card': state },
+          h('style', null, CARD_CSS),
+          h('div', { className: 'cg-head' },
+            h('span', { className: 'cg-dot', 'data-state': state }),
+            h('span', { className: 'cg-title' }, t('cw.title')),
+            h('span', { className: 'cg-badge' }, block?.isError ? t('cw.failed') : t('cw.invalid')),
+          ),
+          text ? h('pre', { className: 'cg-pre' }, text) : h('div', { className: 'cg-meta' }, t('cw.noMeta')),
+        )
+      }
+
+      const ok = meta.ok === true
+      const verifyOk = meta.verify?.ok === true
+      const state = ok ? (verifyOk ? 'ok' : 'invalid') : 'failed'
+      const stats = meta.stats !== null && typeof meta.stats === 'object' ? meta.stats : {}
+      const facts = []
+      if (stats.pages) facts.push(fill(t('cw.pages'), { count: stats.pages }))
+      if (stats.sources) facts.push(fill(t('cw.sources'), { count: stats.sources }))
+      if (meta.verify !== null && meta.verify !== undefined) {
+        facts.push(verifyOk ? t('cw.verified') : t('cw.verifyFailed'))
+      }
+      const errors = [
+        ...(Array.isArray(meta.errors) ? meta.errors : []),
+        ...(Array.isArray(meta.verify?.errors) ? meta.verify.errors.map((message) => ({ code: 'verify', message: String(message) })) : []),
+      ]
+      const errorMeta = { ...meta, errors }
+
+      return h('div', { className: 'cg-card', 'data-codewalkthrough-card': state },
+        h('style', null, CARD_CSS),
+        h('div', { className: 'cg-head' },
+          h('span', { className: 'cg-dot', 'data-state': state }),
+          h('span', { className: 'cg-title' }, t('cw.title')),
+          meta.topic ? h('span', { className: 'cg-topic' }, meta.topic) : null,
+          h('span', { className: 'cg-badge' }, ok ? (verifyOk ? t('cw.ok') : t('cw.invalid')) : t('cw.failed')),
+        ),
+        facts.length > 0 ? h('div', { className: 'cg-meta' }, facts.join(' · ')) : null,
+        errors.length > 0 && showErrors ? h(ErrorList, { t, meta: errorMeta }) : null,
+        h('div', { className: 'cg-actions' },
+          ok && typeof openFile === 'function' && meta.html
+            ? h('button', {
+              type: 'button',
+              className: 'cg-primary',
+              onClick: () => openSafely(openFile, meta.htmlAbs ?? meta.html),
+            }, t('cw.open'))
+            : null,
+          errors.length > 0 || meta.message
+            ? h('button', {
+              type: 'button',
+              onClick: () => setShowErrors((value) => !value),
+            }, showErrors ? t('card.hideErrors') : `${t('card.errors')}${errors.length > 0 ? ` (${errors.length})` : ''}`)
+            : null,
+        ),
+      )
+    }
+
     const TAB_CSS = `
 .cg-tab{height:100%;min-height:0;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
 .cg-tab-head{display:flex;align-items:center;gap:8px;min-height:36px;padding:0 10px;border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-specific-sidebar-fill)}
@@ -305,8 +438,21 @@ window.__ModuleLoader__.load({
 .cg-notice{padding:6px 10px;font-size:12px;color:var(--dsw-alias-state-warn-primary);border-bottom:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1)}
 `
 
-    function makeGraphTab(ctx, scope) {
-      return function CodeGraphTab(props) {
+    function makeHtmlTab(ctx, scope, options = {}) {
+      const tabOptions = {
+        messageType: 'codegraph.navigate',
+        noncePrefix: 'cg',
+        titleKey: 'tab.title',
+        frameTitleKey: 'tab.frameTitle',
+        loadingKey: 'tab.loading',
+        errorKey: 'tab.error',
+        retryKey: 'tab.retry',
+        reloadKey: 'tab.reload',
+        removedKey: 'tab.removed',
+        unavailableKey: 'tab.unavailable',
+        ...options,
+      }
+      return function CodeGraphHtmlTab(props) {
         const { useTabInfo } = props
         const t = typeof props.t === 'function' ? props.t : (key) => key
         const tRef = React.useRef(t)
@@ -327,13 +473,13 @@ window.__ModuleLoader__.load({
         const [state, setState] = React.useState({ status: 'loading' })
         const frameRef = React.useRef(null)
         const nonce = React.useMemo(
-          () => `cg-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`,
-          [],
+          () => `${tabOptions.noncePrefix}-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`,
+          [tabOptions.noncePrefix],
         )
 
         React.useEffect(() => {
           if (parsed === null) {
-            setState({ status: 'error', message: tRef.current('tab.unavailable') })
+            setState({ status: 'error', message: tRef.current(tabOptions.unavailableKey) })
             return undefined
           }
           const controller = new AbortController()
@@ -346,13 +492,13 @@ window.__ModuleLoader__.load({
             .then((result) => {
               if (controller.signal.aborted) return
               if (result === null || typeof result !== 'object' || result.ok !== true) {
-                const message = result?.error?.message ?? tRef.current('tab.error')
+                const message = result?.error?.message ?? tRef.current(tabOptions.errorKey)
                 setState({ status: 'error', message })
                 return
               }
               const data = result.value?.data
               if (data === undefined) {
-                setState({ status: 'error', message: tRef.current('tab.error') })
+                setState({ status: 'error', message: tRef.current(tabOptions.errorKey) })
                 return
               }
               objectUrl = URL.createObjectURL(new Blob([data], { type: 'text/html' }))
@@ -373,15 +519,15 @@ window.__ModuleLoader__.load({
             if (event.source !== frameRef.current?.contentWindow) return
             const data = event.data
             if (data === null || typeof data !== 'object') return
-            if (data.v !== 1 || data.type !== 'codegraph.navigate' || data.token !== nonce) return
+            if (data.v !== 1 || data.type !== tabOptions.messageType || data.token !== nonce) return
             if (typeof data.file !== 'string' || typeof data.line !== 'number') return
             if (data.status === 'removed') {
-              setNotice(tRef.current('tab.removed'))
+              setNotice(tRef.current(tabOptions.removedKey))
               return
             }
             const repo = typeof data.repo === 'string' ? data.repo : ''
             if (repo === '' || parsed === null) {
-              setNotice(tRef.current('tab.unavailable'))
+              setNotice(tRef.current(tabOptions.unavailableKey))
               return
             }
             const absolute = data.file.startsWith('/')
@@ -405,11 +551,11 @@ window.__ModuleLoader__.load({
           return h('div', { className: 'cg-tab' },
             h('style', null, TAB_CSS),
             h('div', { className: 'cg-tab-head' },
-              h('span', { className: 'cg-tab-title' }, tab.title || t('tab.title')),
+              h('span', { className: 'cg-tab-title' }, tab.title || t(tabOptions.titleKey)),
               h('button', {
                 type: 'button',
                 onClick: () => setReloadKey((value) => value + 1),
-              }, t('tab.reload')),
+              }, t(tabOptions.reloadKey)),
             ),
             notice ? h('div', { className: 'cg-notice' }, notice) : null,
             h('iframe', {
@@ -417,7 +563,7 @@ window.__ModuleLoader__.load({
               className: 'cg-frame',
               sandbox: 'allow-scripts',
               src: `${state.url}#dsh=${encodeURIComponent(nonce)}&fs=${codeFontSize}`,
-              title: t('tab.frameTitle'),
+              title: t(tabOptions.frameTitleKey),
             }),
           )
         }
@@ -425,20 +571,20 @@ window.__ModuleLoader__.load({
         return h('div', { className: 'cg-tab' },
           h('style', null, TAB_CSS),
           h('div', { className: 'cg-tab-head' },
-            h('span', { className: 'cg-tab-title' }, tab.title || t('tab.title')),
+            h('span', { className: 'cg-tab-title' }, tab.title || t(tabOptions.titleKey)),
           ),
           notice ? h('div', { className: 'cg-notice' }, notice) : null,
           h('div', { className: 'cg-status' },
             state.status === 'error'
               ? h(React.Fragment, null,
-                h('span', null, t('tab.error')),
+                h('span', null, t(tabOptions.errorKey)),
                 h('code', null, state.message ?? ''),
                 h('button', {
                   type: 'button',
                   onClick: () => setReloadKey((value) => value + 1),
-                }, t('tab.retry')),
+                }, t(tabOptions.retryKey)),
               )
-              : h('span', null, t('tab.loading')),
+              : h('span', null, t(tabOptions.loadingKey)),
           ),
         )
       }
@@ -455,6 +601,12 @@ window.__ModuleLoader__.load({
           locale: NS,
         }, CodeGraphCard))
 
+        ctx.slots.inject('tool.call.toolview', () => ctx.slots.register({
+          name: 'tool.call.toolview',
+          key: 'codegraph_walkthrough_build',
+          locale: NS,
+        }, CodeWalkthroughCard))
+
         ctx.effect(() => ctx.sidebarRightTabs.register({
           id: GRAPH_TAB_ID,
           kind: 'codegraph',
@@ -464,12 +616,41 @@ window.__ModuleLoader__.load({
           title: graphTitle,
         }), 'codegraph: graph tab type')
 
+        ctx.effect(() => ctx.sidebarRightTabs.register({
+          id: WALKTHROUGH_TAB_ID,
+          kind: 'walkthrough',
+          patterns: ['*.html'],
+          priority: 'extension',
+          canOpen: isWalkthroughAddress,
+          title: walkthroughTitle,
+        }), 'codegraph: walkthrough tab type')
+
         ctx.inject(['remote', 'remote.workspaceFiles'], (scope) => {
           ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
             name: 'sidebar.right.pane.tab',
             key: GRAPH_TAB_ID,
             locale: NS,
-          }, makeGraphTab(ctx, scope)))
+          }, makeHtmlTab(ctx, scope, {
+            messageType: 'codegraph.navigate',
+            noncePrefix: 'cg',
+          })))
+
+          ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+            name: 'sidebar.right.pane.tab',
+            key: WALKTHROUGH_TAB_ID,
+            locale: NS,
+          }, makeHtmlTab(ctx, scope, {
+            messageType: 'codewalk.navigate',
+            noncePrefix: 'cw',
+            titleKey: 'cw.tab.title',
+            frameTitleKey: 'cw.tab.frameTitle',
+            loadingKey: 'cw.tab.loading',
+            errorKey: 'cw.tab.error',
+            retryKey: 'cw.tab.retry',
+            reloadKey: 'cw.tab.reload',
+            removedKey: 'cw.tab.removed',
+            unavailableKey: 'cw.tab.unavailable',
+          })))
         })
       },
     }

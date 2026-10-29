@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "CodeGraph",
-    "description": "把一段代码流程画成可点击跳转源码的流程图或时序图，在右侧栏查看，点节点直达对应源码行。"
+    "description": "在右侧栏查看可点击跳转源码的 CodeGraph 图表，以及多页、可交互的 CodeWalkthrough 讲解页。"
   }
 }

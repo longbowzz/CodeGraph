@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, isAbsolute, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildDiagram, listDiagrams } from './lib/build.js'
+import { buildWalkthrough } from './lib/walkthrough.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SKILL_DIR = resolve(HERE, '..', 'skill', 'CodeGraph')
@@ -97,6 +98,68 @@ const BUILD_PARAMETERS = {
     },
   },
   required: ['topic', 'mmd', 'locs'],
+}
+
+const WALKTHROUGH_OUTPUT = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['ok'],
+  properties: {
+    ok: { type: 'boolean' },
+    kind: { type: 'string' },
+    stage: { type: 'string' },
+    topic: { type: 'string' },
+    dir: { type: 'string' },
+    html: { type: 'string' },
+    htmlRel: { type: 'string' },
+    htmlAbs: { type: 'string' },
+    meta: { type: 'string' },
+    metaRel: { type: 'string' },
+    metaAbs: { type: 'string' },
+    content: { type: 'string' },
+    contentRel: { type: 'string' },
+    contentAbs: { type: 'string' },
+    repo: { type: 'string' },
+    pages: { type: 'array', items: { type: 'object', additionalProperties: true } },
+    sources: { type: 'array', items: { type: 'string' } },
+    stats: { type: 'object', additionalProperties: true },
+    verify: { type: 'object', additionalProperties: true },
+    errors: { type: 'array', items: { type: 'object', additionalProperties: true } },
+    warnings: { type: 'array', items: { type: 'object', additionalProperties: true } },
+    message: { type: 'string' },
+  },
+}
+
+const WALKTHROUGH_PARAMETERS = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    topic: {
+      type: 'string',
+      description: 'Short human-readable title in the user\'s language. Used for the output folder and the article title.',
+    },
+    html: {
+      type: 'string',
+      description: 'The CodeWalkthrough content body fragment (sections with class="cw-section"; arbitrary inline HTML/SVG/CSS/JS is allowed). Read references/walkthrough.md before writing it. Source code must be referenced with data-source/data-code, not hand-copied.',
+    },
+    language: {
+      type: 'string',
+      description: 'Content/UI language, for example zh or en. Use the user\'s usual chat language unless they explicitly request another one.',
+    },
+    audience: {
+      type: 'string',
+      description: 'One-line reader profile confirmed during intake, for example: web developer new to the payments domain.',
+    },
+    scope: {
+      type: 'string',
+      description: 'One-line scope confirmed during intake, for example: refund entry point through ledger posting.',
+    },
+    repo: {
+      type: 'string',
+      description: 'Repository root, relative to the session workspace. Defaults to the workspace itself and must stay inside it.',
+    },
+  },
+  required: ['topic', 'html'],
 }
 
 const LIST_PARAMETERS = {
@@ -243,7 +306,7 @@ function listTool(ctx, config) {
   return {
     name: 'codegraph_list',
     description:
-      'List recent CodeGraph artifacts in the workspace, newest first. Use it to find or reopen a graph generated earlier or by a subagent.',
+      'List recent CodeGraph artifacts in the workspace, newest first. Includes graphs and CodeWalkthrough explainers; use it to find or reopen an earlier artifact or one created by a subagent.',
     parameters: LIST_PARAMETERS,
     output: {
       schema: {
@@ -264,8 +327,12 @@ function listTool(ctx, config) {
           return [{ type: 'text', text: 'No CodeGraph artifacts found in this workspace.' }]
         }
         const lines = value.items.map((item) => {
+          const kind = item.kind === 'walkthrough' ? 'walkthrough' : 'graph'
           const kinds = Array.isArray(item.kinds) && item.kinds.length > 0 ? ` (${item.kinds.join(' + ')})` : ''
-          return `- ${item.topic}${kinds}: ${item.htmlRel ?? item.html}`
+          const facts = kind === 'walkthrough'
+            ? ` · ${item.pages ?? 0} sections / ${item.sources ?? 0} sources`
+            : kinds
+          return `- [${kind}] ${item.topic}${facts}: ${item.htmlRel ?? item.html}`
         })
         return [{ type: 'text', text: lines.join('\n') }]
       },
@@ -291,6 +358,102 @@ function listTool(ctx, config) {
   }
 }
 
+function validateWalkthroughArgs(args) {
+  if (args === null || typeof args !== 'object' || Array.isArray(args)) {
+    return 'arguments must be an object'
+  }
+  if (typeof args.topic !== 'string' || args.topic.trim() === '') return 'topic must be a non-empty string'
+  if (typeof args.html !== 'string' || args.html.trim() === '') return 'html must be a non-empty string'
+  for (const key of ['language', 'audience', 'scope', 'repo']) {
+    if (args[key] !== undefined && typeof args[key] !== 'string') return `${key} must be a string`
+  }
+  return null
+}
+
+function renderWalkthrough(value) {
+  if (value.ok) {
+    const lines = [`CodeWalkthrough built: ${value.htmlRel ?? value.html ?? value.dir}`]
+    const facts = []
+    if (value.stats?.pages) facts.push(`${value.stats.pages} sections`)
+    if (value.stats?.sources) facts.push(`${value.stats.sources} source files`)
+    if (value.stats?.codeBlocks) facts.push(`${value.stats.codeBlocks} code blocks`)
+    if (facts.length > 0) lines.push(facts.join(' · '))
+    if (value.verify?.ok === true) lines.push('Self-check passed.')
+    if (Array.isArray(value.warnings) && value.warnings.length > 0) {
+      lines.push(`${value.warnings.length} warning(s)`)
+    }
+    return [{ type: 'text', text: lines.join('\n') }]
+  }
+
+  const lines = [`CodeWalkthrough ${value.stage ?? 'build'} failed.`]
+  for (const error of Array.isArray(value.errors) ? value.errors : []) {
+    const head = [error.code, error.path].filter(Boolean).join(' ')
+    lines.push(`- ${head}${head ? ': ' : ''}${error.message ?? ''}`.trimEnd())
+    if (error.fix_hint) lines.push(`  Fix: ${error.fix_hint}`)
+  }
+  if (value.message) lines.push(value.message)
+  return [{ type: 'text', text: lines.join('\n') }]
+}
+
+function walkthroughTool(ctx, config, skillDir) {
+  return {
+    name: 'codegraph_walkthrough_build',
+    description:
+      'Build a single-file, long-form CodeWalkthrough explainer that explains a module or flow. Use this (not codegraph_build) for an introduction, walkthrough, tutorial, or explainer article. First load the `codegraph` skill and read `references/walkthrough.md`; ask the user the intake questions, read the relevant code and tests, and write objective content with data-source/data-code references. The tool embeds the source, assembles the shell, runs the static self-check, and returns structured errors with fix hints. At most 3 repair rounds, then stop.',
+    parameters: WALKTHROUGH_PARAMETERS,
+    output: {
+      schema: WALKTHROUGH_OUTPUT,
+      render: (_args, value) => renderWalkthrough(value),
+      presentationMeta: (_args, value) => ({
+        v: 1,
+        version: VERSION,
+        kind: 'walkthrough',
+        ok: value.ok === true,
+        stage: value.stage ?? null,
+        topic: value.topic ?? null,
+        dir: value.dir ?? null,
+        html: value.htmlRel ?? value.html ?? null,
+        htmlAbs: value.htmlAbs ?? null,
+        pages: Array.isArray(value.pages) ? value.pages : [],
+        sources: Array.isArray(value.sources) ? value.sources : [],
+        stats: value.stats ?? null,
+        verify: value.verify ?? null,
+        errors: Array.isArray(value.errors) ? value.errors : [],
+        warnings: Array.isArray(value.warnings) ? value.warnings : [],
+        message: value.message ?? null,
+      }),
+    },
+    timeoutMs: 240_000,
+    isConcurrencySafe: false,
+    async execute(args, exec) {
+      if (exec.agent === undefined) throw new Error('codegraph_walkthrough_build requires an agent Session')
+      const invalid = validateWalkthroughArgs(args)
+      if (invalid !== null) return failure('args', invalid)
+
+      const cwd = await ctx.workingDirectory.ensure(exec.agent, exec.signal)
+      const target = resolveRepo(cwd, args.repo)
+      if (target.error !== undefined) return failure('args', target.error)
+
+      try {
+        return await buildWalkthrough({
+          skillDir,
+          repo: target.repo,
+          cwd,
+          topic: args.topic.trim(),
+          html: args.html,
+          language: args.language,
+          audience: args.audience,
+          scope: args.scope,
+          config,
+          signal: exec.signal,
+        })
+      } catch (error) {
+        return failure('internal', error?.message ?? String(error))
+      }
+    },
+  }
+}
+
 function loadSkillBody() {
   const adapter = readFileSync(ADAPTER, 'utf8')
   const contract = readFileSync(resolve(SKILL_DIR, 'SKILL.md'), 'utf8')
@@ -304,9 +467,9 @@ export function apply(ctx, config) {
     () => ctx.skills.register({
       name: 'codegraph',
       description:
-        'Generate an interactive, source-linked flowchart or sequence diagram from a codebase, with diff-aware review mode.',
+        'Generate source-linked diagrams and long-form CodeWalkthrough explainers from a codebase, with diff-aware graph review mode.',
       whenToUse:
-        'Use when the user asks to visualize a code flow, call sequence, request lifecycle, or architecture path, or to review a PR/commit as a diagram — even when they do not say CodeGraph.',
+        'Use when the user asks CodeGraph to visualize a flow, call sequence, lifecycle, or architecture path (graph workflow), or to introduce/explain/teach a module or flow as a long-form interactive explainer (CodeWalkthrough workflow) — even when they do not say CodeGraph.',
       content: loadSkillBody(),
       path: resolve(SKILL_DIR, 'SKILL.md'),
       resourceBase: { kind: 'directory', path: SKILL_DIR },
@@ -319,6 +482,10 @@ export function apply(ctx, config) {
   ctx.effect(
     () => ctx.tools.register(buildTool(ctx, options, SKILL_DIR)),
     'codegraph: codegraph_build',
+  )
+  ctx.effect(
+    () => ctx.tools.register(walkthroughTool(ctx, options, SKILL_DIR)),
+    'codegraph: codegraph_walkthrough_build',
   )
   ctx.effect(
     () => ctx.tools.register(listTool(ctx, options)),

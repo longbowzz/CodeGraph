@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "CodeGraph for DeepSeek Harness: source-linked flowcharts and sequence diagrams from a codebase.",
+  "description": "CodeGraph and CodeWalkthrough for DeepSeek Harness: source-linked diagrams and interactive explainer pages from a codebase.",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",

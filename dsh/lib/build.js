@@ -174,7 +174,7 @@ function runOnce(command, script, args, { cwd, signal, timeoutMs }) {
   })
 }
 
-async function runNode(script, args, options) {
+export async function runNode(script, args, options) {
   const first = nodeLaunch()
   try {
     return await runOnce(first.command, script, args, options)
@@ -213,9 +213,9 @@ function failure(stage, message, extra = {}) {
   return { ok: false, stage, message, errors: [], warnings: [], ...extra }
 }
 
-function readMeta(dir) {
+function readMeta(dir, name = 'graph.meta.json') {
   try {
-    return JSON.parse(readFileSync(join(dir, 'graph.meta.json'), 'utf8'))
+    return JSON.parse(readFileSync(join(dir, name), 'utf8'))
   } catch {
     return null
   }
@@ -412,33 +412,38 @@ export function listDiagrams({ repo, cwd, config, limit = 10 }) {
   const outRoot = resolve(repoAbs, outputDir)
   if (!existsSync(outRoot)) return { ok: true, items: [] }
 
-  const entries = readdirSync(outRoot, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .filter((name) => existsSync(join(outRoot, name, 'graph.html')))
-    .map((name) => {
+  const candidates = []
+  for (const entry of readdirSync(outRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue
+    const dir = join(outRoot, entry.name)
+    const add = (kind, file, metaFile) => {
+      const htmlPath = join(dir, file)
+      if (!existsSync(htmlPath)) return
       try {
-        return { name, mtime: statSync(join(outRoot, name, 'graph.html')).mtimeMs }
-      } catch {
-        return null
-      }
-    })
-    .filter((entry) => entry !== null)
-    .sort((a, b) => b.mtime - a.mtime)
-    .slice(0, Math.max(1, Math.min(Number(limit) || 10, 50)))
+        candidates.push({ kind, dir, name: entry.name, htmlPath, metaFile, mtime: statSync(htmlPath).mtimeMs })
+      } catch {}
+    }
+    add('graph', 'graph.html', 'graph.meta.json')
+    add('walkthrough', 'walkthrough.html', 'walkthrough.meta.json')
+  }
+  candidates.sort((a, b) => b.mtime - a.mtime)
+  const entries = candidates.slice(0, Math.max(1, Math.min(Number(limit) || 10, 50)))
 
-  const items = entries.map(({ name }) => {
-    const dir = join(outRoot, name)
-    const meta = readMeta(dir)
-    const htmlPath = join(dir, 'graph.html')
+  const items = entries.map(({ kind, dir, name, htmlPath, metaFile }) => {
+    const meta = readMeta(dir, metaFile)
     return {
+      kind,
       topic: typeof meta?.topic === 'string' ? meta.topic : fallbackTopic(name),
       dir: relativeTo(repoAbs, dir),
       html: relativeTo(repoAbs, htmlPath),
       htmlRel: relativeOrAbsolute(cwd, htmlPath),
       createdAt: typeof meta?.createdAt === 'string' ? meta.createdAt : null,
-      kinds: Array.isArray(meta?.kinds) ? meta.kinds : inferKindsFromDir(dir),
-      review: meta?.review ?? null,
+      kinds: kind === 'walkthrough'
+        ? ['walkthrough']
+        : (Array.isArray(meta?.kinds) ? meta.kinds : inferKindsFromDir(dir)),
+      pages: Array.isArray(meta?.pages) ? meta.pages.length : 0,
+      sources: Array.isArray(meta?.sources) ? meta.sources.length : 0,
+      review: kind === 'graph' ? (meta?.review ?? null) : null,
       stats: meta?.stats ?? null,
     }
   })
