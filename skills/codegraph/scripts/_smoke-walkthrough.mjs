@@ -1,6 +1,6 @@
 // Smoke test for the CodeWalkthrough builder + verifier.
 //
-// Run from the repository root: node skill/CodeGraph/scripts/_smoke-walkthrough.mjs
+// Run from the repository root: node skills/codegraph/scripts/_smoke-walkthrough.mjs
 // It builds the committed sample into a temp directory and removes it.
 
 import assert from 'node:assert/strict'

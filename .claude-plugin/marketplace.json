@@ -1,0 +1,14 @@
+{
+  "name": "codegraph",
+  "owner": {
+    "name": "longbowzz"
+  },
+  "description": "Source-linked diagrams and explainers for code flows.",
+  "plugins": [
+    {
+      "name": "codegraph",
+      "source": "./",
+      "description": "Render a code flow as a source-linked Mermaid diagram or a long-form interactive explainer."
+    }
+  ]
+}

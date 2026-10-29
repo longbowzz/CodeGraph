@@ -1,5 +1,5 @@
 // _smoke-diff-status.mjs — quick smoke tests for diff-status.mjs
-// Run: node skill/CodeGraph/scripts/_smoke-diff-status.mjs
+// Run: node skills/codegraph/scripts/_smoke-diff-status.mjs
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

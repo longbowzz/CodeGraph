@@ -2,7 +2,7 @@
 
 [English](README.md) · [中文](README.zh-CN.md)
 
-This bundle turns [CodeGraph](../../README.md) into a Harness capability:
+This bundle turns [CodeGraph](../README.md) into a Harness capability:
 
 - **Skill** — `codegraph` teaches the agent the Mermaid + source-location contract.
 - **Tools** — `codegraph_build` validates and builds a graph in one call;
@@ -22,16 +22,23 @@ This bundle turns [CodeGraph](../../README.md) into a Harness capability:
 
 ## Install
 
-Requires Node.js 18+ and a DSH build with plugin-manager support. In DSH, ask
-the agent to install this local bundle:
+Requires Node.js 18+ and DSH 0.2.x. Install the published bundle:
 
-> Install the CodeGraph plugin bundle from `/absolute/path/to/CodeGraph/dsh`.
+```bash
+dsh plugin --profile web add -w @longbowzz/dsh-codegraph
+```
 
-The agent performs this with the plugin manager
-(`plugin_manager install_bundle /absolute/path/to/CodeGraph/dsh`). The bundle is
-installed as a linked local package, so it reuses `../skill/CodeGraph` in place
-(scripts, template, and vendored Mermaid). Keep the CodeGraph checkout in place;
-moving or deleting it requires reinstalling the bundle. If the skill, tools, or
+The `-w` flag adds the bundle to the profile's workspace root; pnpm requires it
+on some DSH builds.
+
+For local development, install the repository checkout instead:
+
+```bash
+dsh plugin --profile web add -w /absolute/path/to/CodeGraph
+```
+
+The package includes `skills/codegraph` (scripts, template, and vendored
+Mermaid), so no separate checkout is needed at runtime. If the skill, tools, or
 graph tab do not appear, reload the DSH page.
 
 The plugin writes only under `<workspace>/.codegraph/` and refuses a `repo`
@@ -87,7 +94,7 @@ graph tab, and a file/function/line card at the graph's right edge. A standalone
 browser renders neither the card nor the ruler, and keeps its Web code pane.
 
 CodeWalkthrough has its own shell under
-`../skill/CodeGraph/template/walkthrough/`. It embeds the referenced source
+`../skills/codegraph/template/walkthrough/`. It embeds the referenced source
 into a single HTML file so the browser pane works offline; in DSH the shell
 hides that pane and posts `codewalk.navigate` to the tab. Its workflow contract
-is `../skill/CodeGraph/references/walkthrough.md`.
+is `../skills/codegraph/references/walkthrough.md`.

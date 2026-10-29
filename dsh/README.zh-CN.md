@@ -2,7 +2,7 @@
 
 [English](README.md) · [中文](README.zh-CN.md)
 
-本 bundle 把 [CodeGraph](../../README.md) 接入 DeepSeek Harness：
+本 bundle 把 [CodeGraph](../README.md) 接入 DeepSeek Harness：
 
 - **Skill** — `codegraph` 教 agent Mermaid 与源码位置约定。
 - **工具** — `codegraph_build` 一次完成图的校验和构建；`codegraph_walkthrough_build` 构建讲解页；`codegraph_list` 查找两种历史产物。
@@ -12,15 +12,22 @@
 
 ## 安装
 
-需要 Node.js 18+，以及支持 plugin-manager 的 DSH。在 DSH 里让 agent 安装本地 bundle：
+需要 Node.js 18+ 和 DSH 0.2.x。安装已发布的 bundle：
 
-> 安装 `/绝对路径/CodeGraph/dsh` 的 CodeGraph 插件。
+```bash
+dsh plugin --profile web add -w @longbowzz/dsh-codegraph
+```
 
-底层由 agent 调用插件管理器执行
-`plugin_manager install_bundle /绝对路径/CodeGraph/dsh`。bundle 以链接方式安装，
-复用 `../skill/CodeGraph`（脚本、模板和 vendored Mermaid）。请保持 CodeGraph
-checkout 在原路径；移动或删除后需要重新安装。如果 Skill、工具或图 tab 没有出现，
-刷新一次 DSH 页面。
+`-w` 会把依赖加到 profile 的 workspace root；部分 DSH 构建下 pnpm 要求显式指定。
+
+本地开发时改为安装当前 checkout：
+
+```bash
+dsh plugin --profile web add -w /绝对路径/CodeGraph
+```
+
+包内已包含 `skills/codegraph`（脚本、模板和 vendored Mermaid），运行时不需要
+单独的 checkout。如果 Skill、工具或图 tab 没有出现，刷新一次 DSH 页面。
 
 插件只写入 `<workspace>/.codegraph/`，并拒绝 session workspace 之外的 `repo`。
 
@@ -69,6 +76,6 @@ dsh/
 Web 代码栏。
 
 CodeWalkthrough 有独立的外壳，位于
-`../skill/CodeGraph/template/walkthrough/`。它把被引用的源码嵌入单个 HTML，
+`../skills/codegraph/template/walkthrough/`。它把被引用的源码嵌入单个 HTML，
 因此浏览器分栏离线可用；在 DSH 中隐藏该分栏，改发 `codewalk.navigate` 给 tab。
-它的工作流契约在 `../skill/CodeGraph/references/walkthrough.md`。
+它的工作流契约在 `../skills/codegraph/references/walkthrough.md`。

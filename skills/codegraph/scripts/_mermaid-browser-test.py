@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline official-Mermaid browser fixtures; requires installed Playwright/Chromium.
 
-Run: /path/to/python3 -I skill/CodeGraph/scripts/_mermaid-browser-test.py
+Run: /path/to/python3 -I skills/codegraph/scripts/_mermaid-browser-test.py
 All diagram/source/HTML fixtures are temporary; no target diagrams are modified.
 """
 import json

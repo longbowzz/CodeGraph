@@ -2,7 +2,7 @@
 """Semantic source navigation integration test.
 
 Run with a Python that already has Playwright and Chromium installed:
-    python3 -I skill/CodeGraph/scripts/_semantic-location-test.py
+    python3 -I skills/codegraph/scripts/_semantic-location-test.py
 No dependencies are installed; all generated fixtures live in a temporary repo.
 """
 import json

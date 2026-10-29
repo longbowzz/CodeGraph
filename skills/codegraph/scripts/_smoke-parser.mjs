@@ -1,5 +1,5 @@
 // _smoke-parser.mjs — quick smoke tests for mermaid-parser.mjs
-// Run: node skill/CodeGraph/scripts/_smoke-parser.mjs
+// Run: node skills/codegraph/scripts/_smoke-parser.mjs
 import { parseMermaid, ParseError } from './mermaid-parser.mjs';
 
 const cases = [

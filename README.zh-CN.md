@@ -24,7 +24,7 @@
 
 ### Mermaid 支持范围
 
-CodeGraph 使用固定版本、随项目 vendored 的官方 Mermaid **11.12.0** 引擎，打包详情见 [`vendor/mermaid-manifest.json`](skill/CodeGraph/vendor/mermaid-manifest.json)。支持范围是该固定版本接受、且 CodeGraph 流程图 / 时序图视图能够表达的 Mermaid 语法，每个文件最多包含一张流程图和/或一张时序图，其他图类型不在本契约范围内；也不代表支持 Mermaid 的所有功能。
+CodeGraph 使用固定版本、随项目 vendored 的官方 Mermaid **11.12.0** 引擎，打包详情见 [`vendor/mermaid-manifest.json`](skills/codegraph/vendor/mermaid-manifest.json)。支持范围是该固定版本接受、且 CodeGraph 流程图 / 时序图视图能够表达的 Mermaid 语法，每个文件最多包含一张流程图和/或一张时序图，其他图类型不在本契约范围内；也不代表支持 Mermaid 的所有功能。
 
 常见构造包括：`graph` / `flowchart` 的 `TD`、`TB`、`BT`、`LR`、`RL` 方向、常见节点形状、带标签和样式的边、边链、子图、class 样式、引号包裹的标签和多行标签；以及包含 actor / participant 声明（含隐式参与者）、激活、注释、`loop`、`alt`、`opt`、`par`、`critical`、`break` 片段、`rect` / `box` 分组和 `autonumber` 的时序图。此列表仅列举常见语法，并非完整兼容性清单；CodeGraph 不额外施加两层嵌套上限。请使用固定引擎版本接受、且源码导航视图能够忠实表达的语法。
 
@@ -52,14 +52,16 @@ Mermaid 及其他浏览器资源会 vendored 到生成的 HTML 中，因此生�
 
 ### 添加到 Claude Code
 
-克隆仓库后，把 Skill 软链或复制到 Claude 的 skills 目录：
+从本仓库的插件市场安装：
 
 ```bash
-git clone https://github.com/longbowzz/CodeGraph.git
-ln -s "$(pwd)/CodeGraph/skill/CodeGraph" ~/.claude/skills/CodeGraph
+claude plugin marketplace add longbowzz/CodeGraph
+claude plugin install codegraph@codegraph
 ```
 
-或把 `skill/CodeGraph/` 目录复制到目标项目的 `.claude/skills/CodeGraph/`。
+在会话里也可以用 `/plugin install codegraph@codegraph --marketplace longbowzz/CodeGraph`
+一步完成。若不想用插件管理器，把 `skills/codegraph/` 软链或复制到
+`~/.claude/skills/codegraph/`（或目标项目的 `.claude/skills/codegraph/`）即可。
 
 ### DeepSeek Harness 插件
 
@@ -70,13 +72,18 @@ ln -s "$(pwd)/CodeGraph/skill/CodeGraph" ~/.claude/skills/CodeGraph
 - 每次构建的对话结果卡片；
 - 右侧栏图/讲解页 tab；点击源码引用会在 Harness 源码预览中打开对应行。
 
-在 DSH 里让 agent 安装本地 bundle：
+安装已发布的 bundle：
 
-> 安装 `/绝对路径/CodeGraph/dsh` 的 CodeGraph 插件。
+```bash
+dsh plugin --profile web add -w @longbowzz/dsh-codegraph
+```
 
-底层由 agent 调用插件管理器执行
-`plugin_manager install_bundle /绝对路径/CodeGraph/dsh`。bundle 以链接方式安装，
-直接复用当前 checkout 的 `skill/CodeGraph`；移动 checkout 后需要重新安装。
+`-w` 会把依赖加到 profile 的 workspace root；部分 DSH 构建下 pnpm 要求显式指定。
+
+本地开发时改为安装当前 checkout：
+`dsh plugin --profile web add -w /绝对路径/CodeGraph`。包内已包含
+`skills/codegraph`，运行时不需要保留单独的 checkout。如果 Skill、工具或图 tab
+没有出现，刷新一次 DSH 页面。
 
 然后直接说：
 
@@ -91,15 +98,15 @@ agent 会加载 `codegraph` Skill、生成图并返回卡片。点 **Open graph*
 agent 会先问几个问题明确读者、范围、深度，再阅读相关代码和测试，生成单文件
 `walkthrough.html`：上下滚动的长文、内联 SVG/CSS/JS、源码引用。普通浏览器中有可折叠的右侧
 源码分栏；DSH 中使用自带源码 pane。交付前会做静态和运行时自检。详见
-[CodeWalkthrough 契约](skill/CodeGraph/references/walkthrough.md)。
+[CodeWalkthrough 契约](skills/codegraph/references/walkthrough.md)。
 
 配置与限制见 [`dsh/README.zh-CN.md`](dsh/README.zh-CN.md)。
 
 ### 验证
 
 ```bash
-node CodeGraph/skill/CodeGraph/scripts/_smoke-parser.mjs
-node CodeGraph/skill/CodeGraph/scripts/_smoke-validate.mjs
+node CodeGraph/skills/codegraph/scripts/_smoke-parser.mjs
+node CodeGraph/skills/codegraph/scripts/_smoke-validate.mjs
 ```
 
 两个都应该全部通过。
@@ -123,12 +130,12 @@ Agent 会：
 ### 手动
 
 ```bash
-node skill/CodeGraph/scripts/validate.mjs \
+node skills/codegraph/scripts/validate.mjs \
   --mmd path/to/graph.mmd \
   --locs path/to/graph.locs.json \
   --repo /path/to/your/repo
 
-node skill/CodeGraph/scripts/build-html.mjs \
+node skills/codegraph/scripts/build-html.mjs \
   --mmd path/to/graph.mmd \
   --locs path/to/graph.locs.json \
   --repo /path/to/your/repo \
@@ -142,19 +149,19 @@ CodeWalkthrough 是同一个 Skill 的第二个 workflow。Agent 先写一个内
 用 `section.cw-section` 分节，用 `data-source` / `data-code` 引用源码，然后构建：
 
 ```bash
-node skill/CodeGraph/scripts/build-walkthrough.mjs \
+node skills/codegraph/scripts/build-walkthrough.mjs \
   --content path/to/content.html \
   --repo /path/to/your/repo \
   --topic "退款流程" \
   --language zh
 
-node skill/CodeGraph/scripts/verify-walkthrough.mjs \
+node skills/codegraph/scripts/verify-walkthrough.mjs \
   --file /path/to/your/repo/.codegraph/output/<stamp>-退款流程/walkthrough.html \
   --repo /path/to/your/repo
 ```
 
 产物是单个 `walkthrough.html`；普通浏览器中有可折叠的源码分栏，DSH 中使用自带
-源码 pane。详见 [CodeWalkthrough 契约](skill/CodeGraph/references/walkthrough.md)。
+源码 pane。详见 [CodeWalkthrough 契约](skills/codegraph/references/walkthrough.md)。
 
 ## 源码位置数据格式
 
@@ -182,7 +189,7 @@ node skill/CodeGraph/scripts/verify-walkthrough.mjs \
 
 行为节点必须指向真正实现标签含义的语句；只有入口 / 声明节点可以指向定义行。边指向调用方实际发生调用、发布、分支或返回的语句，消息指向发送 / 调用 / 返回实际发生处。同一条真实语句可以被多处引用。Agent 必须阅读源码上下文来核对每个位置，不得编造位置或用方便的函数头代替；如果单一位置无法忠实表达含义，应拆图或收窄语义。校验器检查结构、路径和行号范围，无法证明语义对应关系。
 
-**旧格式兼容**：旧的扁平节点映射（`{ "A": [file, line], ... }`，也可以放在 `flowchart` 包装内）仍可读取，其边使用**近似源码位置回退**。新生成的图应使用完整覆盖所有边的显式 `nodes` / `edges` 格式。配对示例见 [Skill 契约](skill/CodeGraph/SKILL.md#4-graphlocsjson-format)。
+**旧格式兼容**：旧的扁平节点映射（`{ "A": [file, line], ... }`，也可以放在 `flowchart` 包装内）仍可读取，其边使用**近似源码位置回退**。新生成的图应使用完整覆盖所有边的显式 `nodes` / `edges` 格式。配对示例见 [Skill 契约](skills/codegraph/SKILL.md#4-graphlocsjson-format)。
 
 ## 输出结构
 
@@ -228,7 +235,8 @@ node skill/CodeGraph/scripts/verify-walkthrough.mjs \
 
 ```
 CodeGraph/
-├── skill/CodeGraph/
+├── .claude-plugin/               # Claude Code 插件与市场清单
+├── skills/codegraph/
 │   ├── SKILL.md                  # Agent 指令文档
 │   ├── scripts/
 │   │   ├── mermaid-parser.mjs    # Mermaid 语法解析与图模型
@@ -245,7 +253,9 @@ CodeGraph/
 │       ├── mermaid.min.js        # 固定版本的官方 Mermaid 浏览器包
 │       ├── mermaid-parser.bundle.mjs # Node.js 使用的官方 Mermaid 解析器
 │       └── highlight.min.js      # 打包的 highlight.js（源码面板）
+├── dsh/                          # DeepSeek Harness bundle（Skill + 工具 + UI）
 ├── images/                       # README 截图
+├── package.json                  # DSH 插件的 npm bundle 清单
 ├── LICENSE
 └── README.md
 ```
@@ -265,8 +275,8 @@ npm test
 修改 renderer、模板或 vendor 时，在已安装 Playwright 和 Chromium 的 Python 环境中额外运行：
 
 ```bash
-python3 -I skill/CodeGraph/scripts/_semantic-location-test.py
-python3 -I skill/CodeGraph/scripts/_mermaid-browser-test.py
+python3 -I skills/codegraph/scripts/_semantic-location-test.py
+python3 -I skills/codegraph/scripts/_mermaid-browser-test.py
 ```
 
 浏览器测试会自行创建样例，检查真实源码点击、图形布局、review 模式、主题和离线呈现。vendor 重建是独立的开发检查：`npm ci --ignore-scripts && npm run build:mermaid`。

@@ -1,0 +1,18 @@
+{
+  "name": "codegraph",
+  "displayName": "CodeGraph",
+  "version": "0.2.0",
+  "description": "Source-linked Mermaid diagrams and long-form CodeWalkthrough explainers from a codebase, with diff-aware review mode.",
+  "author": {
+    "name": "longbowzz"
+  },
+  "homepage": "https://github.com/longbowzz/CodeGraph#readme",
+  "repository": "https://github.com/longbowzz/CodeGraph",
+  "license": "MIT",
+  "keywords": [
+    "diagram",
+    "mermaid",
+    "code-review",
+    "walkthrough"
+  ]
+}

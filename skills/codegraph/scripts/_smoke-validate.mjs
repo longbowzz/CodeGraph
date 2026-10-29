@@ -1,5 +1,5 @@
 // _smoke-validate.mjs — quick smoke tests for validate.mjs
-// Run: node skill/CodeGraph/scripts/_smoke-validate.mjs
+// Run: node skills/codegraph/scripts/_smoke-validate.mjs
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';

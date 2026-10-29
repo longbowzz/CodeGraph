@@ -26,7 +26,7 @@ The HTML has **zero runtime dependencies** — no server, no CDN, no `npm instal
 
 ### Mermaid support
 
-CodeGraph uses the official Mermaid **11.12.0** engine, fixed and vendored with the skill; see [`vendor/mermaid-manifest.json`](skill/CodeGraph/vendor/mermaid-manifest.json) for bundle details. The supported contract is Mermaid syntax accepted by that pinned version and representable in CodeGraph's flowchart / sequence view. Each file may contain one flowchart and/or one sequence diagram; other diagram types are outside this contract.
+CodeGraph uses the official Mermaid **11.12.0** engine, fixed and vendored with the skill; see [`vendor/mermaid-manifest.json`](skills/codegraph/vendor/mermaid-manifest.json) for bundle details. The supported contract is Mermaid syntax accepted by that pinned version and representable in CodeGraph's flowchart / sequence view. Each file may contain one flowchart and/or one sequence diagram; other diagram types are outside this contract.
 
 Common constructs include flowcharts with `graph` / `flowchart` headers in `TD`, `TB`, `BT`, `LR`, or `RL`, common node shapes, labeled and styled edges, chains, subgraphs, classes, quoted and multiline labels; and sequence diagrams with actor / participant declarations (including implicit participants), activation, notes, `loop`, `alt`, `opt`, `par`, `critical`, and `break` fragments, `rect` / `box` grouping, and `autonumber`. This is a representative list, not a complete compatibility table; CodeGraph imposes no arbitrary two-level nesting limit. Use syntax accepted by the pinned engine and simplify constructs the source-navigation view cannot represent faithfully.
 
@@ -54,14 +54,17 @@ Mermaid and the other browser assets are vendored into generated HTML, so genera
 
 ### Add to Claude Code
 
-Clone the repo, then symlink (or copy) the skill into your Claude skills directory:
+Install the plugin from this repository's marketplace:
 
 ```bash
-git clone https://github.com/longbowzz/CodeGraph.git
-ln -s "$(pwd)/CodeGraph/skill/CodeGraph" ~/.claude/skills/CodeGraph
+claude plugin marketplace add longbowzz/CodeGraph
+claude plugin install codegraph@codegraph
 ```
 
-Or copy the `skill/CodeGraph/` directory into a project-local `.claude/skills/CodeGraph/`.
+Inside a session, `/plugin install codegraph@codegraph --marketplace longbowzz/CodeGraph`
+does both steps. To use the skill without a plugin manager, symlink or copy
+`skills/codegraph/` into `~/.claude/skills/codegraph/` (or a project-local
+`.claude/skills/codegraph/`).
 
 ### DeepSeek Harness plugin
 
@@ -75,14 +78,19 @@ The [`dsh/`](dsh/README.md) bundle adds CodeGraph to DeepSeek Harness:
 - a right-sidebar graph/walkthrough tab; clicking a source reference opens that
   line in the Harness preview.
 
-Install the local bundle from DSH by asking the agent:
+Install the published bundle:
 
-> Install the CodeGraph plugin bundle from `/absolute/path/to/CodeGraph/dsh`.
+```bash
+dsh plugin --profile web add -w @longbowzz/dsh-codegraph
+```
 
-The agent performs this with the plugin manager
-(`plugin_manager install_bundle /absolute/path/to/CodeGraph/dsh`). The bundle is
-installed as a linked local package and reuses `skill/CodeGraph` in place; keep
-the checkout at that path, or reinstall after moving it.
+The `-w` flag adds the bundle to the profile's workspace root; pnpm requires it
+on some DSH builds.
+
+For local development, install the checkout instead:
+`dsh plugin --profile web add -w /absolute/path/to/CodeGraph`. The package ships
+`skills/codegraph`, so no separate checkout is needed at runtime. Reload the DSH
+page if the skill, tools, or graph tab do not appear.
 
 Then ask:
 
@@ -101,15 +109,15 @@ builds a single-file `walkthrough.html` with vertically scrolling sections, inli
 and source links. In a browser it has a collapsible source pane; in DSH it uses
 the Harness source pane. It runs a static and runtime self-check before
 returning the artifact. See the
-[CodeWalkthrough contract](skill/CodeGraph/references/walkthrough.md).
+[CodeWalkthrough contract](skills/codegraph/references/walkthrough.md).
 
 See [`dsh/README.md`](dsh/README.md) for configuration and limitations.
 
 ### Verify
 
 ```bash
-node CodeGraph/skill/CodeGraph/scripts/_smoke-parser.mjs
-node CodeGraph/skill/CodeGraph/scripts/_smoke-validate.mjs
+node CodeGraph/skills/codegraph/scripts/_smoke-parser.mjs
+node CodeGraph/skills/codegraph/scripts/_smoke-validate.mjs
 ```
 
 Both should report all-pass.
@@ -133,12 +141,12 @@ The agent will:
 ### Manual
 
 ```bash
-node skill/CodeGraph/scripts/validate.mjs \
+node skills/codegraph/scripts/validate.mjs \
   --mmd path/to/graph.mmd \
   --locs path/to/graph.locs.json \
   --repo /path/to/your/repo
 
-node skill/CodeGraph/scripts/build-html.mjs \
+node skills/codegraph/scripts/build-html.mjs \
   --mmd path/to/graph.mmd \
   --locs path/to/graph.locs.json \
   --repo /path/to/your/repo \
@@ -153,20 +161,20 @@ body-fragment HTML file with `section.cw-section` sections and `data-source` /
 `data-code` references, then builds:
 
 ```bash
-node skill/CodeGraph/scripts/build-walkthrough.mjs \
+node skills/codegraph/scripts/build-walkthrough.mjs \
   --content path/to/content.html \
   --repo /path/to/your/repo \
   --topic "Refund flow" \
   --language en
 
-node skill/CodeGraph/scripts/verify-walkthrough.mjs \
+node skills/codegraph/scripts/verify-walkthrough.mjs \
   --file /path/to/your/repo/.codegraph/output/<stamp>-refund-flow/walkthrough.html \
   --repo /path/to/your/repo
 ```
 
 The output is a single `walkthrough.html`; open it in a browser for the
 collapsible source pane, or in DSH for the Harness code pane. See the
-[CodeWalkthrough contract](skill/CodeGraph/references/walkthrough.md).
+[CodeWalkthrough contract](skills/codegraph/references/walkthrough.md).
 
 ## Location data format
 
@@ -218,7 +226,7 @@ ranges; it cannot prove this semantic correspondence.
 **Legacy input:** old flat node maps (`{ "A": [file, line], ... }`, also inside a
 `flowchart` wrapper) remain readable. Their edges use an **approximate source
 fallback**. New generation uses explicit `nodes`/`edges` with full edge coverage.
-See [the skill contract](skill/CodeGraph/SKILL.md#4-graphlocsjson-format) for paired
+See [the skill contract](skills/codegraph/SKILL.md#4-graphlocsjson-format) for paired
 flowchart and sequence examples.
 
 ## Output structure
@@ -270,7 +278,8 @@ the splitter to reset). Use this when no supported editor is installed locally.
 
 ```
 CodeGraph/
-├── skill/CodeGraph/
+├── .claude-plugin/               # Claude Code plugin + marketplace manifests
+├── skills/codegraph/
 │   ├── SKILL.md                  # Agent instructions
 │   ├── scripts/
 │   │   ├── mermaid-parser.mjs    # Mermaid syntax parser and graph model
@@ -287,7 +296,9 @@ CodeGraph/
 │       ├── mermaid.min.js        # Fixed official Mermaid browser bundle
 │       ├── mermaid-parser.bundle.mjs # Official Mermaid parser for Node.js
 │       └── highlight.min.js      # Bundled highlight.js (source code panel)
+├── dsh/                          # DeepSeek Harness bundle (skill + tools + UI)
 ├── images/                       # README screenshots
+├── package.json                  # npm bundle manifest for the DSH plugin
 ├── LICENSE
 └── README.md
 ```
@@ -307,8 +318,8 @@ For `WORKTREE` reviews, staged and unstaged changes are included; untracked file
 For renderer, template, or vendor changes, also run the browser suites with a Python environment containing Playwright and Chromium:
 
 ```bash
-python3 -I skill/CodeGraph/scripts/_semantic-location-test.py
-python3 -I skill/CodeGraph/scripts/_mermaid-browser-test.py
+python3 -I skills/codegraph/scripts/_semantic-location-test.py
+python3 -I skills/codegraph/scripts/_mermaid-browser-test.py
 ```
 
 These create their own fixtures and check real source clicks, diagram geometry, review mode, themes, and offline rendering. Rebuilding vendored assets remains a separate development check: `npm ci --ignore-scripts && npm run build:mermaid`.

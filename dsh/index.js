@@ -15,9 +15,9 @@ import { buildDiagram, listDiagrams } from './lib/build.js'
 import { buildWalkthrough } from './lib/walkthrough.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const SKILL_DIR = resolve(HERE, '..', 'skill', 'CodeGraph')
+const SKILL_DIR = resolve(HERE, '..', 'skills', 'codegraph')
 const ADAPTER = resolve(HERE, 'skill-adapter.md')
-const VERSION = '0.1.0'
+const VERSION = '0.2.0'
 
 export const name = 'codegraph'
 export const inject = ['tools', 'skills', 'workingDirectory']

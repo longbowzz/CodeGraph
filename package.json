@@ -1,10 +1,66 @@
 {
-  "name": "codegraph-vendor-build",
-  "private": true,
+  "name": "@longbowzz/dsh-codegraph",
+  "version": "0.2.0",
+  "private": false,
+  "type": "module",
+  "description": "CodeGraph and CodeWalkthrough for DeepSeek Harness: source-linked Mermaid diagrams and long-form interactive explainer pages.",
+  "license": "MIT",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "codegraph",
+    "mermaid",
+    "diagram",
+    "code-review",
+    "walkthrough"
+  ],
+  "main": "./dsh/index.js",
+  "exports": {
+    ".": "./dsh/index.js",
+    "./client": "./dsh/client.js",
+    "./locale/*.json": "./dsh/locale/*.json",
+    "./icon": "./dsh/icon.svg"
+  },
+  "files": [
+    "dsh",
+    "skills/codegraph"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./dsh/cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-chat",
+        "@deepseek-ai/dsh-api-remotes",
+        "@deepseek-ai/dsh-api-workspace-files",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "engines": {
+    "dsh": ">=0.2.0-0 <0.3.0-0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/longbowzz/CodeGraph.git"
+  },
+  "homepage": "https://github.com/longbowzz/CodeGraph#readme",
+  "bugs": {
+    "url": "https://github.com/longbowzz/CodeGraph/issues"
+  },
   "scripts": {
     "test": "npm run test:scripts",
-    "test:scripts": "node skill/CodeGraph/scripts/_smoke-parser.mjs && node skill/CodeGraph/scripts/_smoke-validate.mjs && node skill/CodeGraph/scripts/_smoke-diff-status.mjs && node skill/CodeGraph/scripts/_smoke-walkthrough.mjs && node --test skill/CodeGraph/scripts/_smoke-build.mjs skill/CodeGraph/scripts/_smoke-locations.mjs skill/CodeGraph/scripts/_smoke-cli.mjs",
-    "build:mermaid": "node skill/CodeGraph/scripts/build-mermaid.mjs"
+    "test:scripts": "node skills/codegraph/scripts/_smoke-parser.mjs && node skills/codegraph/scripts/_smoke-validate.mjs && node skills/codegraph/scripts/_smoke-diff-status.mjs && node skills/codegraph/scripts/_smoke-walkthrough.mjs && node --test skills/codegraph/scripts/_smoke-build.mjs skills/codegraph/scripts/_smoke-locations.mjs skills/codegraph/scripts/_smoke-cli.mjs",
+    "build:mermaid": "node skills/codegraph/scripts/build-mermaid.mjs"
   },
   "devDependencies": {
     "esbuild": "0.25.10",

@@ -1,3 +1,8 @@
+---
+name: codegraph
+description: "Generate source-linked Mermaid diagrams and long-form CodeWalkthrough explainer pages from a codebase, with diff-aware review mode."
+---
+
 # CodeGraph Skill
 
 > Generate an interactive, single-page HTML visualization of a specific code flow
@@ -36,9 +41,11 @@ Required on the host machine:
 The agent MUST resolve the skill's own directory before invoking scripts. The
 skill can be installed in one of these locations (check in order):
 
-1. **Project-local**: `<repo>/.claude/skills/CodeGraph/`
-2. **User-global**: `~/.claude/skills/CodeGraph/`
-3. **Cloned repo**: any directory containing this `SKILL.md` file.
+1. **Project-local (Claude)**: `<repo>/.claude/skills/codegraph/`
+2. **User-global (Claude)**: `~/.claude/skills/codegraph/`
+3. **Project-local (DSH)**: `<repo>/.dsh/skills/codegraph/`
+4. **User-global (DSH)**: `~/.dsh/skills/codegraph/` or `~/.agents/skills/codegraph/`
+5. **Cloned repo or bundle**: `skills/codegraph/` in the CodeGraph checkout.
 
 In all cases, the scripts are at `<skill-dir>/scripts/`, templates at
 `<skill-dir>/template/`, and the vendored Mermaid engine and browser assets at `<skill-dir>/vendor/`.
@@ -46,7 +53,8 @@ In all cases, the scripts are at `<skill-dir>/scripts/`, templates at
 To find the skill dir from a shell:
 
 ```bash
-find . ~/.claude/skills -type f -name SKILL.md -path '*CodeGraph*' 2>/dev/null | head -1 | xargs dirname
+find . ~/.claude/skills ~/.dsh/skills ~/.agents/skills -type f -name SKILL.md \
+  \( -path '*codegraph*' -o -path '*CodeGraph*' \) 2>/dev/null | head -1 | xargs dirname
 ```
 
 In examples below, `<SKILL_DIR>` refers to this resolved directory.
