@@ -1,5 +1,7 @@
 # CodeGraph for DeepSeek Harness
 
+[English](README.md) · [中文](README.zh-CN.md)
+
 This bundle turns [CodeGraph](../../README.md) into a Harness capability:
 
 - **Skill** — `codegraph` teaches the agent the Mermaid + source-location contract.
@@ -34,8 +36,6 @@ outside the session workspace.
 Ask the agent to draw a flow, for example:
 
 > Use CodeGraph to draw the login flow as a sequence diagram.
-
-> 画一下登录流程的时序图，用 CodeGraph。
 
 The agent loads `codegraph`, reads the code, and calls `codegraph_build` with
 the Mermaid text and the location table. The resulting card opens the graph.

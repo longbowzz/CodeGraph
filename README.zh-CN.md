@@ -59,7 +59,7 @@ ln -s "$(pwd)/CodeGraph/skill/CodeGraph" ~/.claude/skills/CodeGraph
 
 ### DeepSeek Harness 插件
 
-[`dsh/`](dsh/README.md) 把 CodeGraph 接入 DeepSeek Harness：
+[`dsh/`](dsh/README.zh-CN.md) 把 CodeGraph 接入 DeepSeek Harness：
 
 - `codegraph` 运行时 Skill，以及 `codegraph_build` / `codegraph_list` 工具；
 - 每次构建的对话结果卡片；
@@ -79,7 +79,7 @@ ln -s "$(pwd)/CodeGraph/skill/CodeGraph" ~/.claude/skills/CodeGraph
 
 agent 会加载 `codegraph` Skill、生成图并返回卡片。点 **Open graph**，再点图中的节点/箭头/消息即可跳到对应源码行。如果 Skill、工具或图 tab 没出现，刷新一次 DSH 页面。
 
-配置与限制见 [`dsh/README.md`](dsh/README.md)。
+配置与限制见 [`dsh/README.zh-CN.md`](dsh/README.zh-CN.md)。
 
 ### 验证
 
