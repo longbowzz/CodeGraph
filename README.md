@@ -57,6 +57,22 @@ ln -s "$(pwd)/CodeGraph/skill/CodeGraph" ~/.claude/skills/CodeGraph
 
 Or copy the `skill/CodeGraph/` directory into a project-local `.claude/skills/CodeGraph/`.
 
+### DeepSeek Harness plugin
+
+The [`dsh/`](dsh/README.md) bundle turns CodeGraph into a Harness capability: a
+`codegraph` runtime skill, `codegraph_build` / `codegraph_list` tools, a chat
+result card, and a dedicated right-sidebar graph tab whose node clicks open the
+exact source line in the Harness preview.
+
+From the CodeGraph repository root, install the local bundle:
+
+```text
+plugin_manager install_bundle <absolute path to CodeGraph/dsh>
+```
+
+The bundle links this checkout, so it reuses `skill/CodeGraph` in place. See
+[`dsh/README.md`](dsh/README.md) for details.
+
 ### Verify
 
 ```bash

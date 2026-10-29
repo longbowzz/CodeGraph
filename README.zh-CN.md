@@ -57,6 +57,18 @@ ln -s "$(pwd)/CodeGraph/skill/CodeGraph" ~/.claude/skills/CodeGraph
 
 或把 `skill/CodeGraph/` 目录复制到目标项目的 `.claude/skills/CodeGraph/`。
 
+### DeepSeek Harness 插件
+
+[`dsh/`](dsh/README.md) 是 CodeGraph 的 Harness 插件：注册 `codegraph` 运行时 Skill、`codegraph_build` / `codegraph_list` 工具、对话结果卡片，以及右侧栏图 tab；点击节点会在 Harness 的源码预览中打开对应行。
+
+在 CodeGraph 仓库根目录安装本地 bundle：
+
+```text
+plugin_manager install_bundle <CodeGraph/dsh 的绝对路径>
+```
+
+插件以本地链接方式安装，直接复用 `skill/CodeGraph`，详见 [`dsh/README.md`](dsh/README.md)。
+
 ### 验证
 
 ```bash

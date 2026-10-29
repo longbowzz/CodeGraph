@@ -26,7 +26,62 @@
     // `web` opens source in an in-page code pane (right side of the canvas).
     // No URL scheme — clicking a node routes through showCodeInPane() below.
     'web':              { label: 'Web',              inPage: true },
+    // Internal mode used when the page is framed by the Harness graph tab:
+    // clicks are relayed to the host and the in-page code pane stays off.
+    'dsh':              { label: 'DSH',              bridge: true },
   };
+
+  // When the page is framed by the DSH graph tab, the tab appends
+  // `#dsh=<token>` and owns source navigation. Send the semantic location to
+  // the parent instead of launching an external editor.
+  const dshBridge = (() => {
+    try {
+      const hash = window.location.hash || '';
+      const match = /(?:^|[#&])dsh=([^&]+)/.exec(hash);
+      const fsMatch = /(?:^|[#&])fs=([\d.]+)/.exec(hash);
+      return match
+        ? { token: decodeURIComponent(match[1]), fontSize: fsMatch ? Number(fsMatch[1]) : 0 }
+        : null;
+    } catch {
+      return null;
+    }
+  })();
+  function codeLineHeight() {
+    const fontSize = dshBridge !== null && Number.isFinite(dshBridge.fontSize) && dshBridge.fontSize > 0
+      ? dshBridge.fontSize
+      : 13;
+    return fontSize * 1.6;
+  }
+
+  // The Harness source preview scrolls the requested line to the top of its
+  // content area. Move the request up by roughly half a viewport so the real
+  // target lands near the middle. The line ruler below still reports the true
+  // target line; this only changes the navigation request.
+  function isCodeSource(file) {
+    return /\.(?:[cm]?js|jsx|tsx?|py|go|rs|java|c|h|cc|cpp|cxx|hpp|css|html?|svg|json|sh|bash|ya?ml|sql)$/i.test(file);
+  }
+  function dshNavLine(file, line) {
+    if (!isCodeSource(file)) return line;
+    const paneHeight = window.innerHeight || 0;
+    const chromeHeight = 72;   // preview header + code toolbar, roughly
+    const lineHeight = codeLineHeight();
+    const visible = Math.max(1, (paneHeight - chromeHeight) / lineHeight);
+    const lead = Math.max(0, Math.floor(visible / 2));
+    return Math.max(1, line - lead);
+  }
+  function sendNavigation(file, line, status) {
+    if (dshBridge === null) return;
+    parent.postMessage({
+      v: 1,
+      type: 'codegraph.navigate',
+      token: dshBridge.token,
+      repo,
+      file,
+      line: dshNavLine(file, line),
+      targetLine: line,
+      status,
+    }, '*');
+  }
 
   // ---- Safari detection (for banner) ----
   if (/^((?!chrome|android|crios|fxios).)*safari/i.test(navigator.userAgent)) {
@@ -34,11 +89,19 @@
   }
 
   // ---- Editor selector ----
-  let currentEditor = localStorage.getItem('cg-editor') || data.editor?.id || 'vscode';
+  // A sandboxed preview (for example the DSH graph tab) has an opaque origin
+  // where localStorage access throws. Fall back to the embedded editor choice.
+  let editorStorage = null;
+  try { editorStorage = window.localStorage; } catch {}
+  let storedEditor = null;
+  try { storedEditor = editorStorage?.getItem('cg-editor') ?? null; } catch {}
+  let currentEditor = storedEditor || data.editor?.id || 'vscode';
+  if (dshBridge) currentEditor = 'dsh';
   if (!editors[currentEditor]) currentEditor = 'vscode';
 
   const editorSel = document.getElementById('editor-select');
   for (const [id, e] of Object.entries(editors)) {
+    if (id === 'dsh') continue;
     const opt = document.createElement('option');
     opt.value = id; opt.textContent = e.label;
     if (id === currentEditor) opt.selected = true;
@@ -46,7 +109,7 @@
   }
   editorSel.addEventListener('change', () => {
     currentEditor = editorSel.value;
-    localStorage.setItem('cg-editor', currentEditor);
+    try { editorStorage?.setItem('cg-editor', currentEditor); } catch {}
     applyWebMode();
   });
 
@@ -54,11 +117,19 @@
   function applyWebMode() {
     const on = editors[currentEditor]?.inPage === true;
     document.body.classList.toggle('cg-web-mode', on);
+    document.body.classList.toggle('cg-dsh-mode', dshBridge !== null);
   }
   applyWebMode();
+  if (dshBridge) {
+    const footer = document.querySelector('footer');
+    if (footer) {
+      footer.textContent = 'Hover to highlight · Click to open source in the side panel · Scroll to zoom · Drag to pan';
+    }
+  }
 
   // ---- Topic / header ----
-  document.getElementById('topic').textContent = data.topic || '(untitled)';
+  // The folder carries the timestamp; the header reads better without it.
+  document.getElementById('topic').textContent = String(data.topic || '(untitled)').replace(/^\d{8}-\d{4}-/, '');
   document.getElementById('repo').textContent = repo;
 
   // ---- Build absolute path ----
@@ -68,6 +139,181 @@
     return repo.replace(/\/$/, '') + '/' + rel;
   }
 
+  // ---- Right-edge file-position ruler ----
+  // A rough, non-pixel-aligned indicator that follows the preview viewport:
+  // centered lines land mid-track, head/tail clamp near the track ends.
+  // The source preview still owns the exact scroll position.
+  const lineRuler = document.getElementById('cg-line-ruler');
+  const lineCard = document.getElementById('cg-line-card');
+  const lineFile = document.getElementById('cg-line-file');
+  const lineFn = document.getElementById('cg-line-fn');
+  const lineNum = document.getElementById('cg-line-num');
+
+  if (lineCard !== null) {
+    lineCard.addEventListener('pointerdown', (event) => event.stopPropagation());
+    lineCard.addEventListener('click', (event) => {
+      event.stopPropagation();
+      if (lastMarker !== null) sendNavigation(lastMarker.file, lastMarker.line, lastMarker.status);
+    });
+  }
+
+  const fileMaxLine = new Map();
+  function noteLine(loc) {
+    if (!Array.isArray(loc)) return;
+    const [file, line] = loc;
+    if (typeof file !== 'string' || !Number.isInteger(line) || line < 1) return;
+    if (!fileMaxLine.has(file) || fileMaxLine.get(file) < line) fileMaxLine.set(file, line);
+  }
+  if (data.flowchart) {
+    for (const loc of Object.values(data.flowchart.locs || {})) noteLine(loc);
+    for (const loc of Object.values(data.flowchart.edgeLocs || {})) noteLine(loc);
+  }
+  if (data.sequence) {
+    for (const loc of Object.values(data.sequence.locs?.actors || {})) noteLine(loc);
+    for (const loc of data.sequence.locs?.messages || []) noteLine(loc);
+  }
+
+  function countLines(text) {
+    if (typeof text !== 'string' || text === '') return 0;
+    const normalized = text.replace(/\r\n?/g, '\n');
+    const lines = normalized.split('\n');
+    return normalized.endsWith('\n') ? lines.length - 1 : lines.length;
+  }
+
+  // Heuristics for the nearest enclosing declaration above the target line.
+  // This is intentionally approximate; a line outside a function shows a
+  // placeholder rather than a guessed name.
+  const FUNCTION_PATTERNS = [
+    /^\s*return\s+function\s+([A-Za-z_$][\w$]*)/,
+    /^\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)/,
+    /^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s+)?function\b/,
+    /^\s*(?:export\s+)?class\s+([A-Za-z_$][\w$]*)/,
+    /^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/,
+    /^\s*(?:export\s+)?(?:async\s+)?([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*\{/,
+    /^\s*(?:(?:public|private|protected|static|final|abstract|synchronized|native|async|override|virtual|internal|export)\s+)*(?:[\w<>\[\],.?]+\s+)+([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*(?:throws\s+[^{]+)?\{/,
+    /^\s*def\s+([A-Za-z_]\w*)/,
+    /^\s*func\s+(?:\([^)]*\)\s*)?([A-Za-z_]\w*)/,
+    /^\s*fn\s+([A-Za-z_]\w*)/,
+  ];
+  const FUNCTION_KEYWORDS = new Set([
+    'if', 'for', 'while', 'switch', 'catch', 'function', 'return', 'with',
+    'do', 'else', 'try', 'finally', 'new', 'typeof', 'await', 'yield',
+    'throw', 'case', 'default', 'constructor',
+  ]);
+
+  function extractFunctionName(file, line) {
+    const text = data.files?.[file];
+    if (typeof text !== 'string' || text === '') return '';
+    const lines = text.replace(/\r\n?/g, '\n').split('\n');
+    const end = Math.min(line, lines.length) - 1;
+    const start = Math.max(0, end - 400);
+    for (let index = end; index >= start; index -= 1) {
+      const source = lines[index];
+      if (typeof source !== 'string') continue;
+      for (const pattern of FUNCTION_PATTERNS) {
+        const match = pattern.exec(source);
+        if (match !== null && typeof match[1] === 'string' && match[1] !== '' && !FUNCTION_KEYWORDS.has(match[1])) {
+          return match[1];
+        }
+      }
+    }
+    return '';
+  }
+
+  let lastMarker = null;
+
+  function showLineMarker(loc) {
+    // The card is a Harness navigation aid only; a standalone browser keeps
+    // its own Web code pane and shows no overlay.
+    if (dshBridge === null) return;
+    if (!Array.isArray(loc) || lineRuler === null || lineCard === null || lineFile === null || lineFn === null || lineNum === null) return;
+    const file = loc[0];
+    const line = loc[1];
+    const status = loc[2];
+    if (typeof file !== 'string' || !Number.isInteger(line) || line < 1) return;
+
+    lastMarker = { file, line, status };
+    const total = countLines(data.files?.[file]) || fileMaxLine.get(file) || 0;
+    lineFile.textContent = file.split('/').pop() || file;
+    lineFn.textContent = extractFunctionName(file, line) || '(未识别函数)';
+    lineNum.textContent = `第 ${line} 行`;
+    lineCard.title = `${file}:${line} · 点击重新定位`;
+    lineCard.dataset.status = status || 'unchanged';
+    lineRuler.classList.add('visible');
+
+    // Match the code pane's viewport, not the file's proportional length:
+    // the preview centers the target when it can, pins it near the top during
+    // the file head, and pins it near the bottom during the file tail. Use the
+    // same line/header estimates as dshNavLine so the card tracks that scroll.
+    const lineHeight = codeLineHeight();
+    const chromeHeight = 72;
+    const paneHeight = window.innerHeight || 0;
+    const viewportHeight = Math.max(lineHeight, paneHeight - chromeHeight);
+    const contentHeight = Math.max(total, line) * lineHeight;
+    const desiredScroll = (line - 1) * lineHeight - (viewportHeight - lineHeight) / 2;
+    const maxScroll = Math.max(0, contentHeight - viewportHeight);
+    const scrollTop = Math.min(Math.max(0, desiredScroll), maxScroll);
+    const lineScreenY = total > 0
+      ? chromeHeight + (line - 1) * lineHeight - scrollTop + lineHeight / 2
+      : paneHeight / 2;
+
+    const graphTop = document.querySelector('header')?.offsetHeight || 0;
+    const rulerTop = graphTop + 16;
+    const cardHeight = lineCard.offsetHeight;
+    // Let the card use the canvas bottom margin; only keep it on screen.
+    const maxTop = Math.max(0, lineRuler.clientHeight + 16 - cardHeight);
+    const top = Math.min(
+      Math.max(0, lineScreenY - rulerTop - cardHeight / 2),
+      maxTop,
+    );
+    lineCard.style.top = `${Math.round(top)}px`;
+  }
+
+  function hideLineCard() {
+    lastMarker = null;
+    if (lineRuler !== null) lineRuler.classList.remove('visible');
+  }
+
+  function clearSelection() {
+    for (const el of document.querySelectorAll('.cg-selected')) el.classList.remove('cg-selected');
+  }
+
+  function selectElement(el) {
+    clearSelection();
+    if (el !== null) el.classList.add('cg-selected');
+  }
+
+  // Clicking a graph element keeps/updates the card; clicking anywhere else
+  // dismisses it. The card itself is handled by its own click listener.
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (target === null || typeof target.closest !== 'function') {
+      hideLineCard();
+      clearSelection();
+      return;
+    }
+    if (target.closest('#cg-line-card, #code-pane, #splitter')) return;
+    if (target.closest('.cg-node, .cg-edge, .cg-msg, .cg-actor')) return;
+    hideLineCard();
+    clearSelection();
+  });
+
+
+  window.addEventListener('resize', () => {
+    if (lastMarker === null) return;
+    requestAnimationFrame(() => showLineMarker([lastMarker.file, lastMarker.line, lastMarker.status]));
+  });
+
+  // The tab pane can resize without a window resize (dock, split, web pane),
+  // and the first click may land before the canvas settles. Keep the marker
+  // proportional to the current track height.
+  const canvasWrap = document.getElementById('canvas-wrap');
+  if (canvasWrap !== null && typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => {
+      if (lastMarker !== null) showLineMarker([lastMarker.file, lastMarker.line, lastMarker.status]);
+    }).observe(canvasWrap);
+  }
+
   function jumpTo(loc) {
     if (!loc) return;
     // locs are stored as [file, line] arrays; accept both forms defensively.
@@ -75,6 +321,11 @@
     const line = Array.isArray(loc) ? loc[1] : loc.line;
     if (!file || !line) return;
     const status = Array.isArray(loc) ? loc[2] : loc.status;
+    showLineMarker([file, line, status]);
+    if (dshBridge) {
+      sendNavigation(file, line, status);
+      return;
+    }
     if (status === 'removed' && !editors[currentEditor].inPage) {
       currentEditor = 'web';
       editorSel.value = 'web';
@@ -518,6 +769,7 @@
     if (nodeEl) {
       const id = nodeEl.getAttribute('data-id');
       const loc = data.flowchart.locs[id];
+      selectElement(nodeEl);
       jumpTo(loc);
       return;
     }
@@ -525,7 +777,10 @@
     if (edgeEl) {
       const loc = flowEdgeLoc(data.flowchart, edgeEl.getAttribute('data-edge-id'),
         edgeEl.getAttribute('data-from'), edgeEl.getAttribute('data-to'));
-      if (loc) jumpTo(loc);
+      if (loc) {
+        selectElement(edgeEl);
+        jumpTo(loc);
+      }
     }
   });
 
@@ -534,6 +789,7 @@
     if (msgEl) {
       const idx = parseInt(msgEl.getAttribute('data-idx'), 10);
       const loc = data.sequence.locs.messages[idx];
+      selectElement(msgEl);
       jumpTo(loc);
       return;
     }
@@ -541,7 +797,10 @@
     if (actorEl) {
       const id = actorEl.getAttribute('data-id');
       const loc = data.sequence.locs.actors[id];
-      jumpTo(loc);
+      if (loc) {
+        selectElement(actorEl);
+        jumpTo(loc);
+      }
     }
   });
 
