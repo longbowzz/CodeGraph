@@ -8,20 +8,23 @@ This bundle turns [CodeGraph](../../README.md) into a Harness capability:
 - **Chat card** — every build reports its topic, diagram kinds, stats, and
   validation errors, with a button that opens the graph.
 - **Graph tab** — generated `.codegraph/output/**/graph.html` files open in a
-  dedicated right-Sidebar tab. Clicking a node or edge opens the exact source
-  line in the Harness source preview, preferably in a second pane.
+  dedicated right-Sidebar tab. Clicking a node, edge, sequence message, or
+  actor opens the exact source line in the Harness source preview, preferably
+  in a second pane.
 
 ## Install
 
-From the CodeGraph repository root:
+Requires Node.js 18+ and a DSH build with plugin-manager support. In DSH, ask
+the agent to install this local bundle:
 
-```text
-plugin_manager install_bundle <absolute path to this dsh/ directory>
-```
+> Install the CodeGraph plugin bundle from `/absolute/path/to/CodeGraph/dsh`.
 
-The bundle is installed as a linked local package, so it reuses
-`../skill/CodeGraph` in place (scripts, template, and vendored Mermaid). Moving
-or deleting the CodeGraph checkout requires reinstalling the bundle.
+The agent performs this with the plugin manager
+(`plugin_manager install_bundle /absolute/path/to/CodeGraph/dsh`). The bundle is
+installed as a linked local package, so it reuses `../skill/CodeGraph` in place
+(scripts, template, and vendored Mermaid). Keep the CodeGraph checkout in place;
+moving or deleting it requires reinstalling the bundle. If the skill, tools, or
+graph tab do not appear, reload the DSH page.
 
 The plugin writes only under `<workspace>/.codegraph/` and refuses a `repo`
 outside the session workspace.
@@ -30,11 +33,17 @@ outside the session workspace.
 
 Ask the agent to draw a flow, for example:
 
+> Use CodeGraph to draw the login flow as a sequence diagram.
+
 > 画一下登录流程的时序图，用 CodeGraph。
 
 The agent loads `codegraph`, reads the code, and calls `codegraph_build` with
 the Mermaid text and the location table. The resulting card opens the graph.
 Review mode uses `review: { base, head }`.
+
+Clicking a node, edge, message, or actor opens the **current source** at that
+line. DSH's native changed-files review tab is turn-scoped and is not opened per
+graph element; use the separate changes review when you need a diff.
 
 ## Layout
 
@@ -49,8 +58,11 @@ dsh/
 └── icon.svg
 ```
 
-The renderer itself is unchanged except for backward-compatible hooks in
-`skill/CodeGraph/template/render.js`: a sandbox-safe `localStorage` guard, a
-`#dsh=<token>` `postMessage` bridge, and a DSH presentation mode that hides the
-in-page Web code pane, editor picker, and workspace path while the file is
-framed by the graph tab; the header stays one row high with a truncated topic. Clicking a node or edge also shows a DSH-only file/function/line card at the graph's right edge; a standalone browser renders neither the card nor the ruler. The same HTML still opens normally in a browser, with the Web code pane.
+The renderer is shared with the standalone skill. It gains a sandbox-safe
+`localStorage` guard, persistent selection (clicking blank canvas clears it),
+and a one-row header with a truncated topic. DSH-specific hooks are gated by
+`#dsh`: a `postMessage` bridge, a presentation mode that hides the in-page Web
+code pane, editor picker, and workspace path while the file is framed by the
+graph tab, and a file/function/line card at the graph's right edge. A standalone
+browser renders neither the card nor the ruler, and keeps its Web code pane.
+The same HTML still opens normally in a browser.
