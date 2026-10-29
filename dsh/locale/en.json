@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "CodeGraph",
+    "description": "Turn a code flow into a source-linked flowchart or sequence diagram, view it in the side panel, and jump from any node to its exact source line."
+  }
+}

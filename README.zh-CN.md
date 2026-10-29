@@ -57,6 +57,30 @@ ln -s "$(pwd)/CodeGraph/skill/CodeGraph" ~/.claude/skills/CodeGraph
 
 或把 `skill/CodeGraph/` 目录复制到目标项目的 `.claude/skills/CodeGraph/`。
 
+### DeepSeek Harness 插件
+
+[`dsh/`](dsh/README.zh-CN.md) 把 CodeGraph 接入 DeepSeek Harness：
+
+- `codegraph` 运行时 Skill，以及 `codegraph_build` / `codegraph_list` 工具；
+- 每次构建的对话结果卡片；
+- 右侧栏图 tab；点击节点、箭头、消息或 actor 会在 Harness 源码预览中打开对应行。
+
+在 DSH 里让 agent 安装本地 bundle：
+
+> 安装 `/绝对路径/CodeGraph/dsh` 的 CodeGraph 插件。
+
+底层由 agent 调用插件管理器执行
+`plugin_manager install_bundle /绝对路径/CodeGraph/dsh`。bundle 以链接方式安装，
+直接复用当前 checkout 的 `skill/CodeGraph`；移动 checkout 后需要重新安装。
+
+然后直接说：
+
+> 用 CodeGraph 画一下登录流程的时序图。
+
+agent 会加载 `codegraph` Skill、生成图并返回卡片。点 **Open graph**，再点图中的节点/箭头/消息即可跳到对应源码行。如果 Skill、工具或图 tab 没出现，刷新一次 DSH 页面。
+
+配置与限制见 [`dsh/README.zh-CN.md`](dsh/README.zh-CN.md)。
+
 ### 验证
 
 ```bash

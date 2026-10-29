@@ -57,6 +57,34 @@ ln -s "$(pwd)/CodeGraph/skill/CodeGraph" ~/.claude/skills/CodeGraph
 
 Or copy the `skill/CodeGraph/` directory into a project-local `.claude/skills/CodeGraph/`.
 
+### DeepSeek Harness plugin
+
+The [`dsh/`](dsh/README.md) bundle adds CodeGraph to DeepSeek Harness:
+
+- a `codegraph` runtime skill and `codegraph_build` / `codegraph_list` tools;
+- a chat result card for every build;
+- a right-sidebar graph tab; clicking a node, edge, message, or actor opens that
+  source line in the Harness preview.
+
+Install the local bundle from DSH by asking the agent:
+
+> Install the CodeGraph plugin bundle from `/absolute/path/to/CodeGraph/dsh`.
+
+The agent performs this with the plugin manager
+(`plugin_manager install_bundle /absolute/path/to/CodeGraph/dsh`). The bundle is
+installed as a linked local package and reuses `skill/CodeGraph` in place; keep
+the checkout at that path, or reinstall after moving it.
+
+Then ask:
+
+> Use CodeGraph to draw the login flow as a sequence diagram.
+
+The agent loads the `codegraph` skill, produces the graph, and returns a card.
+Click **Open graph**, then click any graph element to jump to its source line.
+If the skill, tools, or graph tab do not appear, reload the DSH page.
+
+See [`dsh/README.md`](dsh/README.md) for configuration and limitations.
+
 ### Verify
 
 ```bash

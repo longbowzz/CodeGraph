@@ -1,0 +1,6 @@
+- insert:
+    - id: codegraph
+      name: '@longbowzz/dsh-codegraph'
+      config:
+        outputDir: .codegraph/output
+        editor: web

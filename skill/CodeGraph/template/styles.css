@@ -77,17 +77,30 @@ header {
   background: #fff;
   flex-shrink: 0;
 }
-header h1 { font-size: 14px; font-weight: 600; margin: 0; color: var(--muted); }
-header .topic { font-size: 16px; font-weight: 600; color: var(--fg); }
-header .spacer { flex: 1; }
+header h1 { font-size: 14px; font-weight: 600; margin: 0; color: var(--muted); flex: none; }
+/* Keep the header one row high: long topics truncate instead of wrapping. */
+header .topic {
+  font-size: 16px; font-weight: 600; color: var(--fg);
+  flex: 1 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+header .spacer { flex: 0 0 0; }
+header #repo {
+  flex: 0 1 auto; min-width: 0; max-width: 30vw;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 header select, header button {
   font-size: 13px; padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px;
-  background: #fff;
+  background: #fff; flex: none;
 }
 header button { cursor: pointer; }
 header button:hover { background: #f0f0f0; }
+/* The Harness graph tab owns source navigation; there is no editor to pick. */
+body.cg-dsh-mode #editor-select { display: none; }
+/* The workspace path already lives in the Harness chrome; keep the row short. */
+body.cg-dsh-mode #repo { display: none; }
 
-.tabs { display: flex; gap: 4px; }
+.tabs { display: flex; gap: 4px; flex: none; }
 .tab {
   padding: 6px 12px; border: 1px solid #ccc; border-radius: 4px;
   cursor: pointer; background: #fff; font-size: 13px;
@@ -117,6 +130,39 @@ body.safari #safari-warn { display: block; }
   cursor: grab;
 }
 #canvas-wrap:active { cursor: grabbing; }
+
+/* ---- File-position card on the graph's right edge (Harness only) ---- */
+#cg-line-ruler {
+  position: absolute; right: 10px; top: 16px; bottom: 16px; width: 2px;
+  opacity: 0; pointer-events: none; z-index: 6;
+  transition: opacity .15s ease;
+}
+#cg-line-ruler.visible { opacity: 1; }
+#cg-line-ruler::before {
+  content: ""; position: absolute; inset: 0; border-radius: 1px;
+  background: repeating-linear-gradient(to bottom, var(--muted) 0 3px, transparent 3px 7px);
+  opacity: .8;
+}
+/* This card is a Harness-side navigation aid; standalone HTML keeps its own UI. */
+body:not(.cg-dsh-mode) #cg-line-ruler { display: none; }
+#cg-line-card {
+  position: absolute; right: 6px; width: max-content; max-width: min(240px, 46vw);
+  background: var(--bg); border: 1px solid #ddd; border-left: 3px solid var(--accent);
+  border-radius: 6px; padding: 6px 9px; font-size: 11px; line-height: 1.45;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .18); pointer-events: none; cursor: pointer;
+  white-space: nowrap;
+}
+#cg-line-ruler.visible #cg-line-card { pointer-events: auto; }
+#cg-line-card > div { overflow: hidden; text-overflow: ellipsis; }
+#cg-line-file { font-weight: 600; font-size: 12px; color: var(--fg); }
+#cg-line-fn { color: var(--muted); }
+#cg-line-num { color: var(--accent); font-variant-numeric: tabular-nums; }
+#cg-line-card[data-status="added"] { border-left-color: var(--diff-added-stroke); }
+#cg-line-card[data-status="modified"] { border-left-color: var(--diff-modified-stroke); }
+#cg-line-card[data-status="removed"] { border-left-color: var(--diff-removed-stroke); }
+@media (prefers-color-scheme: dark) {
+  #cg-line-card { border-color: #444c58; box-shadow: 0 4px 12px rgba(0, 0, 0, .4); }
+}
 
 /* ---- Web (in-browser) code pane layout ---- */
 #main {
@@ -247,6 +293,23 @@ svg.cg-svg { width: 100%; height: 100%; display: block; user-select: none; }
 .cg-node:hover, .cg-actor:hover { filter: drop-shadow(0 0 3px var(--accent)); }
 .cg-edge:hover .cg-edge-line, .cg-edge-hover .cg-edge-line,
 .cg-msg:hover .cg-msg-line { filter: drop-shadow(0 0 2px var(--accent)); }
+
+/* Persistent selection: the element currently driving the source preview. */
+svg.cg-svg :is(.cg-node, .cg-actor).cg-selected :is(rect, polygon, circle, ellipse, path) {
+  stroke: var(--accent) !important;
+  stroke-width: 2.5px !important;
+}
+.cg-node.cg-selected, .cg-actor.cg-selected {
+  filter: drop-shadow(0 0 5px var(--accent));
+}
+.cg-edge.cg-selected .cg-edge-line,
+.cg-msg.cg-selected .cg-msg-line {
+  stroke: var(--accent) !important;
+  stroke-width: 2.5px !important;
+  filter: drop-shadow(0 0 3px var(--accent));
+}
+.cg-edge.cg-selected text, .cg-msg.cg-selected text { fill: var(--accent); }
+.cg-edge.cg-selected foreignObject *, .cg-msg.cg-selected foreignObject * { color: var(--accent); }
 
 /* Review colors override Mermaid's generated ID-scoped styles and inline styles.
    Hover uses a shadow, so attribution remains readable. */
