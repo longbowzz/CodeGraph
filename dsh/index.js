@@ -17,7 +17,7 @@ import { buildWalkthrough } from './lib/walkthrough.js'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SKILL_DIR = resolve(HERE, '..', 'skills', 'codegraph')
 const ADAPTER = resolve(HERE, 'skill-adapter.md')
-const VERSION = '0.3.1'
+const VERSION = '0.4.0'
 
 export const name = 'codegraph'
 export const inject = ['tools', 'skills', 'workingDirectory']

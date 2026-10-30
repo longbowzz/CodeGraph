@@ -1,6 +1,6 @@
 {
   "name": "@longbowzz/dsh-codegraph",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": false,
   "type": "module",
   "description": "CodeGraph and CodeWalkthrough for DeepSeek Harness: source-linked Mermaid diagrams and long-form interactive explainer pages.",
