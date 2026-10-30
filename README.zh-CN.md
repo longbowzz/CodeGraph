@@ -18,7 +18,9 @@ CodeGraph 是一个 Agent Skill，适用于 Claude Code、DeepSeek Harness、Cur
 
 ## 演示
 
-**视频：** [观看 35 秒演示](https://github.com/longbowzz/CodeGraph/releases/download/v0.2.0/codegraph-demo.mp4) —— 输入 prompt、生成图、跳源码、打开讲解页，一次看完。
+<video src="https://github.com/longbowzz/CodeGraph/releases/download/v0.2.0/codegraph-demo.mp4" controls muted width="100%"></video>
+
+[打开 35 秒演示视频](https://github.com/longbowzz/CodeGraph/releases/download/v0.2.0/codegraph-demo.mp4) —— 输入 prompt、生成图、跳源码、打开讲解页，一次看完。GitHub 会移除 README 视频里的 `autoplay` 和 `loop`，所以需要点一下播放。
 
 **Review 模式流程图。** 绿色为新增，橙色为修改，灰色为未变；点击节点会打开对应源码行。
 

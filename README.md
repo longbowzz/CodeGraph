@@ -18,7 +18,9 @@ Everything is generated as one self-contained HTML file. There is no server, CDN
 
 ## Demo
 
-**Video:** [Watch the 35-second demo](https://github.com/longbowzz/CodeGraph/releases/download/v0.2.0/codegraph-demo.mp4) — prompt, graph, source jump, and walkthrough in one take.
+<video src="https://github.com/longbowzz/CodeGraph/releases/download/v0.2.0/codegraph-demo.mp4" controls muted width="100%"></video>
+
+[Open the 35-second demo video](https://github.com/longbowzz/CodeGraph/releases/download/v0.2.0/codegraph-demo.mp4) — prompt, graph, source jump, and walkthrough in one take. GitHub strips `autoplay` and `loop` from README videos, so the player is click-to-play.
 
 **Review-mode flowchart.** Green is added, orange is modified, gray is unchanged. Clicking a node opens the referenced source line.
 
