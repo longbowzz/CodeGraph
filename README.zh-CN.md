@@ -18,9 +18,7 @@ CodeGraph 是一个 Agent Skill，适用于 Claude Code、DeepSeek Harness、Cur
 
 ## 演示
 
-<video src="https://github.com/longbowzz/CodeGraph/releases/download/v0.2.0/codegraph-demo.mp4" controls muted width="100%"></video>
-
-[打开 35 秒演示视频](https://github.com/longbowzz/CodeGraph/releases/download/v0.2.0/codegraph-demo.mp4) —— 输入 prompt、生成图、跳源码、打开讲解页，一次看完。GitHub 会移除 README 视频里的 `autoplay` 和 `loop`，所以需要点一下播放。
+<video src="https://github.com/user-attachments/assets/9b46b575-58af-444b-b526-af6c41a7260e" controls muted width="100%"></video>
 
 **Review 模式流程图。** 绿色为新增，橙色为修改，灰色为未变；点击节点会打开对应源码行。
 
@@ -34,9 +32,7 @@ CodeGraph 是一个 Agent Skill，适用于 Claude Code、DeepSeek Harness、Cur
 
 ![CodeWalkthrough 示例](images/walkthrough-en.png)
 
-## 两个主要功能
-
-### 流程图
+## 流程图
 
 让 Agent 画一个流程，它会生成单个 `graph.html`：
 
@@ -45,14 +41,17 @@ CodeGraph 是一个 Agent Skill，适用于 Claude Code、DeepSeek Harness、Cur
 - PR / commit / diff 的 review 模式；
 - 任意浏览器可用，离线也能看。
 
-### CodeWalkthrough
+## CodeWalkthrough：把代码变成一门课
 
-让 Agent 讲解一个模块或流程，它会生成单个 `walkthrough.html`：
+CodeWalkthrough 不是“总结一下这个文件”。它会基于代码生成一门小课，设计上围绕三件事：
 
-- 上下滚动的长文，带小节和固定导航；
-- 内联 SVG/CSS/JS 图和真实源码片段；
-- 源码链接能打开对应文件和行；
-- 可选 3–5 道自测题，附答案。
+- **由浅入深**——先用一段话建立心智模型，再给全局图，然后是一个贯穿全文的真实例子，最后进入机制、边界和回顾；每个小节只讲一件事。
+- **图形化讲解**——数据流、状态变化、调用链用内联 SVG/CSS/JS 图和动画表达；代码是展品，不是正文。
+- **练习题验证**——可选的 3–5 道自测题，支持选项判分或点击查看答案；答案解释原因，并链接回源码。
+
+整篇只用一个贯穿案例，关键结论都带源码链接。产物是单个 `walkthrough.html`，离线可看。
+
+适合 onboarding、模块讲解、设计评审，或把一次 review 变成可复用的教材。
 
 ## 安装
 

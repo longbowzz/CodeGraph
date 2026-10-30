@@ -18,9 +18,7 @@ Everything is generated as one self-contained HTML file. There is no server, CDN
 
 ## Demo
 
-<video src="https://github.com/longbowzz/CodeGraph/releases/download/v0.2.0/codegraph-demo.mp4" controls muted width="100%"></video>
-
-[Open the 35-second demo video](https://github.com/longbowzz/CodeGraph/releases/download/v0.2.0/codegraph-demo.mp4) — prompt, graph, source jump, and walkthrough in one take. GitHub strips `autoplay` and `loop` from README videos, so the player is click-to-play.
+<video src="https://github.com/user-attachments/assets/9b46b575-58af-444b-b526-af6c41a7260e" controls muted width="100%"></video>
 
 **Review-mode flowchart.** Green is added, orange is modified, gray is unchanged. Clicking a node opens the referenced source line.
 
@@ -34,9 +32,7 @@ Everything is generated as one self-contained HTML file. There is no server, CDN
 
 ![CodeWalkthrough example](images/walkthrough-en.png)
 
-## The two workflows
-
-### Flow diagrams
+## Flow diagrams
 
 Ask the agent to draw a flow and it produces a single `graph.html`:
 
@@ -45,15 +41,24 @@ Ask the agent to draw a flow and it produces a single `graph.html`:
 - review mode for PRs, commits, and diffs;
 - works in any browser, online or offline.
 
-### CodeWalkthrough
+## CodeWalkthrough: turn code into a course
 
-Ask the agent to explain a module or flow and it produces a single
-`walkthrough.html`:
+CodeWalkthrough is not a summary of a file. It is a small course generated from
+the codebase, built around three ideas:
 
-- long-form, vertically scrolling article with sections and a sticky nav;
-- inline SVG/CSS/JS diagrams and real source excerpts;
-- source links that open the matching file and line;
-- optional 3–5 question self-test with answers.
+- **Shallow to deep** — open with a one-paragraph mental model, then a
+  big-picture diagram, a running example, the mechanisms, the boundaries, and a
+  recap. Each section makes one point.
+- **Visual first** — data flow, state transitions, and call chains become inline
+  SVG/CSS/JS diagrams and animations. Code is an exhibit, not the main text.
+- **Practice to verify** — an optional 3–5 question self-test, with multiple
+  choice or click-to-reveal answers that explain why and link back to source.
+
+One running example is reused across the page, and every key claim links to a
+source line. The output is a single `walkthrough.html` that works offline.
+
+Use it for onboarding, explaining a module, or turning a design review into a
+reusable lesson.
 
 ## Install
 
