@@ -140,7 +140,7 @@ A <|-- B`,
     locs: {
       classDiagram: {
         classes: {
-          A: ['src/handler.ts', 1],
+          A: { loc: ['src/handler.ts', 1], stereotype: 'handler', summary: 'Handles incoming requests.' },
           B: ['src/auth.ts', 1],
         },
         relations: [

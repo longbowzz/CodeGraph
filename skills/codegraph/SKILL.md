@@ -502,8 +502,14 @@ relax the new format's full-edge-coverage requirement.
   and kind from 1 in Mermaid order.
 - A class location identifies its declaration. A relation location identifies
   the field/usage/extends statement that creates the relationship.
+- A class entry may be a tuple (`["file", line]`) or an object with extras:
+  `{ "loc": ["file", line], "stereotype": "builder", "summary": "One sentence." }`.
+  `stereotype` and `summary` are optional; they power the hover card and do not
+  affect click-to-source.
 - Members, methods, and annotations belong to the class box and are not mapped
   separately. Namespaces and notes are visual-only.
+- A relation label (`A ..> B : parses with`) is presentation only; it does not
+  need a separate location.
 
 ---
 

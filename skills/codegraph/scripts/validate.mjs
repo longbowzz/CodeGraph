@@ -219,7 +219,21 @@ if (seqLocs) {
 }
 if (classLocs) {
   for (const [id, entry] of classLocs.classes.entries()) {
-    const e = validateEntry(entry, `classes.${id}`);
+    const metadata = entry !== null && typeof entry === 'object' && !Array.isArray(entry);
+    const loc = metadata ? entry.loc : entry;
+    if (metadata) {
+      if (entry.stereotype !== undefined && (typeof entry.stereotype !== 'string' || entry.stereotype.trim() === '')) {
+        err('LOCS_CLASS_STEREOTYPE_INVALID', `${args.locs}:classes.${id}`,
+          'class stereotype must be a non-empty string',
+          'Use a short role such as "plugin", "builder", "adapter", or "validator".');
+      }
+      if (entry.summary !== undefined && (typeof entry.summary !== 'string' || entry.summary.trim() === '')) {
+        err('LOCS_CLASS_SUMMARY_INVALID', `${args.locs}:classes.${id}`,
+          'class summary must be a non-empty string',
+          'Add one sentence describing the class responsibility.');
+      }
+    }
+    const e = validateEntry(loc, `classes.${id}`);
     if (e) checkedEntries.push([`classes.${id}`, e, 'class']);
   }
   const mappedRelations = new Set();

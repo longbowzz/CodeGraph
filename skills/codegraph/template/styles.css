@@ -470,3 +470,28 @@ svg.cg-svg .cg-relation:is([data-diff="added"], [data-diff="modified"], [data-di
 }
 svg.cg-svg .cg-class[data-diff="removed"] :is(rect, polygon, circle, ellipse, path),
 svg.cg-svg .cg-relation[data-diff="removed"] { stroke-dasharray: 5 3 !important; }
+
+
+/* Class responsibility card, shown on hover. */
+#cg-class-card {
+  position: absolute; left: 16px; bottom: 16px; z-index: 6;
+  width: min(340px, calc(100% - 32px));
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .14);
+  pointer-events: none;
+}
+#cg-class-card[hidden] { display: none; }
+.cg-class-card-head { display: flex; align-items: center; gap: 8px; }
+#cg-class-name { font-weight: 700; font-size: 14px; }
+#cg-class-stereotype {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
+  color: var(--accent); border: 1px solid var(--accent); border-radius: 999px;
+  padding: 1px 6px;
+}
+#cg-class-stereotype:empty { display: none; }
+#cg-class-summary { margin-top: 6px; font-size: 12px; line-height: 1.45; color: var(--fg); }
+#cg-class-meta { margin-top: 6px; font-size: 11px; color: var(--muted); }
+.cg-dim { opacity: .16; transition: opacity .15s ease; }

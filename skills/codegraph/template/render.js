@@ -159,6 +159,7 @@
 
   const fileMaxLine = new Map();
   function noteLine(loc) {
+    if (loc !== null && typeof loc === 'object' && !Array.isArray(loc)) loc = loc.loc;
     if (!Array.isArray(loc)) return;
     const [file, line] = loc;
     if (typeof file !== 'string' || !Number.isInteger(line) || line < 1) return;
@@ -539,19 +540,31 @@
     }
   }
 
+  function classEntryInfo(entry) {
+    const loc = Array.isArray(entry) ? entry : (entry !== null && typeof entry === 'object' && Array.isArray(entry.loc) ? entry.loc : null);
+    return {
+      loc,
+      stereotype: entry !== null && typeof entry === 'object' && !Array.isArray(entry) ? (entry.stereotype || '') : '',
+      summary: entry !== null && typeof entry === 'object' && !Array.isArray(entry) ? (entry.summary || '') : '',
+    };
+  }
+
   function decorateClass(root, cl) {
     const classById = new Map((cl.classes || []).map(klass => [klass.id, klass]));
+    const classEls = new Map();
+    const relationEls = [];
     const seenClasses = new Set();
     for (const el of root.querySelectorAll('[data-cg-class]')) {
       const id = el.getAttribute('data-cg-class');
       const klass = classById.get(id);
       if (!klass || seenClasses.has(id)) throw new Error(`Missing or duplicate Mermaid class marker: ${id || '(empty)'}`);
       seenClasses.add(id);
-      const loc = cl.locs?.classes?.[id];
+      classEls.set(id, el);
+      const info = classEntryInfo(cl.locs?.classes?.[id]);
       addClass(el, 'cg-class');
       el.setAttribute('data-id', id);
-      el.setAttribute('data-loc', loc ? 'true' : 'false');
-      const diff = klass.diff || loc?.[2];
+      el.setAttribute('data-loc', info.loc ? 'true' : 'false');
+      const diff = klass.diff || info.loc?.[2];
       if (diff) el.setAttribute('data-diff', diff);
       else el.removeAttribute('data-diff');
     }
@@ -569,19 +582,81 @@
       const loc = cl.relationLocs?.[id];
       addClass(el, 'cg-relation');
       el.setAttribute('data-rel-id', id);
+      el.setAttribute('data-from', relation.from);
+      el.setAttribute('data-to', relation.to);
       el.setAttribute('data-loc', loc ? 'true' : 'false');
       const diff = relation.diff || loc?.[2];
       if (diff) el.setAttribute('data-diff', diff);
       else el.removeAttribute('data-diff');
+      relationEls.push({ el, relation });
       if (el.localName === 'path') {
         const hit = addHitPath(el, 'cg-relation-hit');
         hit.classList.add('cg-relation');
         hit.setAttribute('data-rel-id', id);
+        hit.setAttribute('data-from', relation.from);
+        hit.setAttribute('data-to', relation.to);
         hit.setAttribute('data-loc', loc ? 'true' : 'false');
+        relationEls.push({ el: hit, relation });
       }
     }
     for (const id of relationById.keys()) {
       if (!seenRelations.has(id)) throw new Error(`Missing Mermaid relation marker: ${id}`);
+    }
+
+    const classCard = document.getElementById('cg-class-card');
+    const className = document.getElementById('cg-class-name');
+    const classStereotype = document.getElementById('cg-class-stereotype');
+    const classSummary = document.getElementById('cg-class-summary');
+    const classMeta = document.getElementById('cg-class-meta');
+
+    function clearFocus() {
+      for (const el of classEls.values()) el.classList.remove('cg-dim');
+      for (const { el } of relationEls) el.classList.remove('cg-dim');
+    }
+
+    function focusClass(id) {
+      const related = new Set([id]);
+      for (const relation of cl.relations || []) {
+        if (relation.from === id) related.add(relation.to);
+        if (relation.to === id) related.add(relation.from);
+      }
+      for (const [classId, el] of classEls) el.classList.toggle('cg-dim', !related.has(classId));
+      for (const { el, relation } of relationEls) {
+        el.classList.toggle('cg-dim', relation.from !== id && relation.to !== id);
+      }
+    }
+
+    function showCard(klass, info) {
+      if (!classCard || !className || !classStereotype || !classSummary || !classMeta) return;
+      className.textContent = klass.label || klass.id;
+      classStereotype.textContent = info.stereotype || klass.type || '';
+      classSummary.textContent = info.summary || '';
+      const loc = info.loc;
+      const facts = [];
+      if (loc) facts.push(`${loc[0]}:${loc[1]}`);
+      if (klass.methods?.length) facts.push(`${klass.methods.length} method${klass.methods.length === 1 ? '' : 's'}`);
+      if (klass.members?.length) facts.push(`${klass.members.length} field${klass.members.length === 1 ? '' : 's'}`);
+      classMeta.textContent = facts.join(' · ');
+      classSummary.hidden = classSummary.textContent === '';
+      classMeta.hidden = classMeta.textContent === '';
+      classCard.hidden = false;
+    }
+
+    function hideCard() {
+      if (classCard) classCard.hidden = true;
+    }
+
+    for (const [id, el] of classEls) {
+      const klass = classById.get(id);
+      const info = classEntryInfo(cl.locs?.classes?.[id]);
+      el.addEventListener('mouseenter', () => {
+        focusClass(id);
+        showCard(klass, info);
+      });
+      el.addEventListener('mouseleave', () => {
+        clearFocus();
+        hideCard();
+      });
     }
   }
 
@@ -869,7 +944,8 @@
     const classEl = e.target.closest('.cg-class[data-loc="true"]');
     if (classEl) {
       const id = classEl.getAttribute('data-id');
-      const loc = data.classDiagram.locs.classes[id];
+      const entry = data.classDiagram.locs.classes[id];
+      const loc = Array.isArray(entry) ? entry : entry?.loc;
       if (loc) {
         selectElement(classEl);
         jumpTo(loc);
