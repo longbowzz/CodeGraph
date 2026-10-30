@@ -63,6 +63,17 @@ claude plugin install codegraph@codegraph
 一步完成。若不想用插件管理器，把 `skills/codegraph/` 软链或复制到
 `~/.claude/skills/codegraph/`（或目标项目的 `.claude/skills/codegraph/`）即可。
 
+### 任意兼容 Agent Skills 的 Agent
+
+Skill 采用标准 Agent Skills 目录结构，可以用 [`skills`](https://www.skills.sh/docs)
+CLI 安装到 Claude Code、Cursor、Codex 等兼容 Agent（需要 Node.js 22.20+）：
+
+```bash
+npx skills add longbowzz/CodeGraph --skill codegraph
+```
+
+在目标项目里运行；加 `-g` 安装到全局，加 `-a claude-code` 跳过 Agent 选择。
+
 ### DeepSeek Harness 插件
 
 [`dsh/`](dsh/README.zh-CN.md) 把 CodeGraph 接入 DeepSeek Harness：

@@ -66,6 +66,19 @@ does both steps. To use the skill without a plugin manager, symlink or copy
 `skills/codegraph/` into `~/.claude/skills/codegraph/` (or a project-local
 `.claude/skills/codegraph/`).
 
+### Any Agent Skills-compatible agent
+
+The skill follows the standard Agent Skills layout, so the [`skills`](https://www.skills.sh/docs)
+CLI can install it into Claude Code, Cursor, Codex, and other compatible agents
+(Node.js 22.20+):
+
+```bash
+npx skills add longbowzz/CodeGraph --skill codegraph
+```
+
+Run it from the target project; add `-g` to install for all projects, or
+`-a claude-code` to skip the agent picker.
+
 ### DeepSeek Harness plugin
 
 The [`dsh/`](dsh/README.md) bundle adds CodeGraph to DeepSeek Harness:
