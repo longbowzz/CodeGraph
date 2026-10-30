@@ -91,14 +91,41 @@ Run it from the target project. Add `-g` to install globally, or
 
 ### DeepSeek Harness
 
+DSH profiles are isolated. Install into the profile you actually boot:
+
+**Desktop app** (normally the `desktop` profile):
+
+```bash
+dsh plugin --profile desktop add -w @longbowzz/dsh-codegraph
+```
+
+**Web** (`dsh web`, which boots the `web` profile):
+
 ```bash
 dsh plugin --profile web add -w @longbowzz/dsh-codegraph
 ```
 
+`--profile web` only affects `dsh web`; it does **not** make the plugin appear
+in the Desktop app. If the app uses a custom profile, replace `desktop` with
+that profile name.
+
 The `-w` flag adds the bundle to the profile's workspace root; pnpm requires it
-on some DSH builds. The bundle also adds the `codegraph_build`,
-`codegraph_walkthrough_build`, and `codegraph_list` tools, result cards, and a
-right-sidebar graph/walkthrough tab. See [`dsh/README.md`](dsh/README.md).
+on some DSH builds. After installing, **quit and reopen DSH** and start a new
+session — bundles and client tabs load at boot, so the current session will not
+pick them up.
+
+Verify the profile contains the bundle:
+
+```bash
+cat ~/.dsh/profiles/desktop/package.json
+```
+
+`dependencies` and `dsh.profile.bundles` should both include
+`@longbowzz/dsh-codegraph`.
+
+The bundle adds the `codegraph_build`, `codegraph_walkthrough_build`, and
+`codegraph_list` tools, result cards, and a right-sidebar graph/walkthrough tab.
+See [`dsh/README.md`](dsh/README.md).
 
 ### Requirements
 

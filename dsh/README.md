@@ -22,24 +22,34 @@ This bundle turns [CodeGraph](../README.md) into a Harness capability:
 
 ## Install
 
-Requires Node.js 18+ and DSH 0.2.x. Install the published bundle:
+Requires Node.js 18+ and DSH 0.2.x. Install the published bundle into the
+profile you actually boot — DSH profiles are isolated:
 
 ```bash
+# Desktop app (normally the desktop profile)
+dsh plugin --profile desktop add -w @longbowzz/dsh-codegraph
+
+# Web (dsh web, which uses the web profile)
 dsh plugin --profile web add -w @longbowzz/dsh-codegraph
 ```
 
-The `-w` flag adds the bundle to the profile's workspace root; pnpm requires it
-on some DSH builds.
+`--profile web` does not affect the Desktop app. The `-w` flag adds the bundle
+to the profile's workspace root; pnpm requires it on some DSH builds.
 
-For local development, install the repository checkout instead:
+For local development, install the repository checkout instead (use the same
+profile name you boot):
 
 ```bash
-dsh plugin --profile web add -w /absolute/path/to/CodeGraph
+dsh plugin --profile desktop add -w /absolute/path/to/CodeGraph
 ```
+
+After installing, quit and reopen DSH and start a new session; bundles and
+client tabs load at boot. Verify that `dependencies` and `dsh.profile.bundles`
+in `~/.dsh/profiles/<name>/package.json` include the package.
 
 The package includes `skills/codegraph` (scripts, template, and vendored
 Mermaid), so no separate checkout is needed at runtime. If the skill, tools, or
-graph tab do not appear, reload the DSH page.
+graph tab do not appear, restart DSH and start a new session.
 
 The plugin writes only under `<workspace>/.codegraph/` and refuses a `repo`
 outside the session workspace.
