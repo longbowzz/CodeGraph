@@ -166,6 +166,8 @@ npm run build:mermaid
 Browser suites require Playwright and Chromium; see
 [`skills/codegraph/scripts`](skills/codegraph/scripts) for the entry points.
 
+Maintainers: see [RELEASING.md](RELEASING.md) for the version bump, publish, and release checklist.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

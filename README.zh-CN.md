@@ -142,6 +142,8 @@ npm run build:mermaid
 浏览器测试需要 Playwright 和 Chromium；入口脚本见
 [`skills/codegraph/scripts`](skills/codegraph/scripts)。
 
+维护者发版流程见 [RELEASING.md](RELEASING.md)。
+
 ## 协议
 
 MIT。见 [LICENSE](LICENSE)。
