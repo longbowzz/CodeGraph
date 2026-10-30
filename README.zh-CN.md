@@ -18,6 +18,8 @@ CodeGraph 是一个 Agent Skill，适用于 Claude Code、DeepSeek Harness、Cur
 
 ## 演示
 
+![CodeGraph 演示](images/demo.gif)
+
 **Review 模式流程图。** 绿色为新增，橙色为修改，灰色为未变；点击节点会打开对应源码行。
 
 ![Review 模式流程图](images/flowchart-diff-en.png)
@@ -25,10 +27,6 @@ CodeGraph 是一个 Agent Skill，适用于 Claude Code、DeepSeek Harness、Cur
 **时序图。** 同样的 review 配色，包含参与者、消息和可点击的源码位置。
 
 ![Review 模式时序图](images/sequence-diff-en.png)
-
-**CodeWalkthrough。** 带小节导航、源码链接和可选自测的长文页面。
-
-![CodeWalkthrough 示例](images/walkthrough-en.png)
 
 ## 流程图
 
@@ -50,6 +48,8 @@ CodeWalkthrough 不是“总结一下这个文件”。它会基于代码生成�
 整篇只用一个贯穿案例，关键结论都带源码链接。产物是单个 `walkthrough.html`，离线可看。
 
 适合 onboarding、模块讲解、设计评审，或把一次 review 变成可复用的教材。
+
+![CodeWalkthrough 演示](images/walkthrough.gif)
 
 ## 安装
 

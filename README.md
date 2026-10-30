@@ -18,6 +18,8 @@ Everything is generated as one self-contained HTML file. There is no server, CDN
 
 ## Demo
 
+![CodeGraph demo](images/demo.gif)
+
 **Review-mode flowchart.** Green is added, orange is modified, gray is unchanged. Clicking a node opens the referenced source line.
 
 ![Review-mode flowchart](images/flowchart-diff-en.png)
@@ -25,10 +27,6 @@ Everything is generated as one self-contained HTML file. There is no server, CDN
 **Sequence diagram.** Same review colors, with actors, messages, and clickable source locations.
 
 ![Review-mode sequence diagram](images/sequence-diff-en.png)
-
-**CodeWalkthrough.** A long-form page with a section nav, source links, and an optional self-test.
-
-![CodeWalkthrough example](images/walkthrough-en.png)
 
 ## Flow diagrams
 
@@ -57,6 +55,8 @@ source line. The output is a single `walkthrough.html` that works offline.
 
 Use it for onboarding, explaining a module, or turning a design review into a
 reusable lesson.
+
+![CodeWalkthrough demo](images/walkthrough.gif)
 
 ## Install
 
