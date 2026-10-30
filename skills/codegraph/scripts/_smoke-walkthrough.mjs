@@ -1,20 +1,28 @@
 // Smoke test for the CodeWalkthrough builder + verifier.
 //
-// Run from the repository root: node skills/codegraph/scripts/_smoke-walkthrough.mjs
-// It builds the committed sample into a temp directory and removes it.
+// Runs from a cloned repo or an installed skill: it builds the committed sample
+// against a self-contained fixture repo, then removes the temp directory.
 
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const skillDir = resolve(here, '..')
-const repo = resolve(skillDir, '..', '..')
 const temp = mkdtempSync(join(tmpdir(), 'cg-walkthrough-'))
 const out = join(temp, 'walkthrough.html')
+
+// The committed sample references DSH source files. Build a tiny fixture repo
+// instead of assuming this script still lives inside the CodeGraph checkout.
+const repo = join(temp, 'repo')
+mkdirSync(join(repo, 'dsh', 'lib'), { recursive: true })
+const filler = (label, lines) => Array.from({ length: lines }, (_, i) => `// ${label} ${i + 1}`).join('\n') + '\n'
+writeFileSync(join(repo, 'dsh', 'index.js'), filler('index', 700))
+writeFileSync(join(repo, 'dsh', 'client.js'), filler('client', 700))
+writeFileSync(join(repo, 'dsh', 'lib', 'build.js'), filler('build', 700))
 
 try {
   const raw = execFileSync(process.execPath, [

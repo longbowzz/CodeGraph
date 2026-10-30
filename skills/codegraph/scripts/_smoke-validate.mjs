@@ -25,8 +25,6 @@ symlinkSync(join(repo, 'src/handler.ts'), join(repo, 'src/inside.ts'));
 const outDir = join(repo, '.codegraph', 'output', 'test');
 mkdirSync(outDir, { recursive: true });
 
-const V = join(repo, '..', '..', 'skill', 'CodeGraph', 'scripts', 'validate.mjs');
-// Resolve V relative to project root
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
