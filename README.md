@@ -18,8 +18,6 @@ Everything is generated as one self-contained HTML file. There is no server, CDN
 
 ## Demo
 
-<video src="https://github.com/user-attachments/assets/9b46b575-58af-444b-b526-af6c41a7260e" controls muted width="100%"></video>
-
 **Review-mode flowchart.** Green is added, orange is modified, gray is unchanged. Clicking a node opens the referenced source line.
 
 ![Review-mode flowchart](images/flowchart-diff-en.png)

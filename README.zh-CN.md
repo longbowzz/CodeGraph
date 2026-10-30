@@ -18,8 +18,6 @@ CodeGraph 是一个 Agent Skill，适用于 Claude Code、DeepSeek Harness、Cur
 
 ## 演示
 
-<video src="https://github.com/user-attachments/assets/9b46b575-58af-444b-b526-af6c41a7260e" controls muted width="100%"></video>
-
 **Review 模式流程图。** 绿色为新增，橙色为修改，灰色为未变；点击节点会打开对应源码行。
 
 ![Review 模式流程图](images/flowchart-diff-en.png)
