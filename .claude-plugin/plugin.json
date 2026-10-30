@@ -1,7 +1,7 @@
 {
   "name": "codegraph",
   "displayName": "CodeGraph",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Source-linked Mermaid diagrams and long-form CodeWalkthrough explainers from a codebase, with diff-aware review mode.",
   "author": {
     "name": "longbowzz"

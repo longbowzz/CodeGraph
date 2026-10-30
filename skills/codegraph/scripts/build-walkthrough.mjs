@@ -21,7 +21,7 @@ const TEMPLATE_DIR = resolve(__dirname, '..', 'template', 'walkthrough')
 const MAX_FILE_BYTES = 1_500_000
 const MAX_TOTAL_BYTES = 8_000_000
 const GENERATOR = 'CodeGraph/CodeWalkthrough'
-const VERSION = '0.3.0'
+const VERSION = '0.3.1'
 
 function parseArgs(argv) {
   const args = {}
