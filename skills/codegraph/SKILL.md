@@ -166,7 +166,7 @@ reasonable interpretation, state it explicitly, and proceed.
 2. **Scope** — which directories/files are in scope.
 3. **Depth** — how many call layers deep to follow (default: 2).
 4. **Breadth** — within scope, fan out into sibling branches or stay linear.
-5. **Diagram type** — `flowchart`, `sequence`, `classDiagram`, or `both`.
+5. **Diagram type** — `flowchart`, `sequence`, `classDiagram`, or any combination of one of each. Prefer one diagram per artifact unless the user asks for a combined page.
 6. **Language** — what language to use for labels/messages (default: user's
    UI language; confirm once).
 
@@ -284,9 +284,9 @@ Mermaid syntax support follows the official Mermaid **11.12.0** engine, fixed
 and vendored with the skill; see `vendor/mermaid-manifest.json` for bundle details. The supported contract is
 the syntax accepted by that engine and representable by CodeGraph's graph model
 and renderer. This is not a promise that every Mermaid diagram type or feature is
-supported. Each `graph.mmd` may contain one `graph` / `flowchart` diagram and/or
-one `sequenceDiagram`, or one `classDiagram`; class diagrams cannot be combined
-with another diagram in the same file. Other diagram types are outside this contract.
+supported. Each `graph.mmd` may contain one `graph` / `flowchart` diagram, one
+`sequenceDiagram`, and/or one `classDiagram` — at most one of each type. Other
+diagram types are outside this contract.
 
 Common constructs within this boundary include:
 
@@ -511,6 +511,17 @@ relax the new format's full-edge-coverage requirement.
 - A relation label (`A ..> B : parses with`) is presentation only; it does not
   need a separate location.
 
+When a file contains more than one diagram, wrap each one and supply only the
+wrappers for the diagrams present:
+
+```json
+{
+  "flowchart": { "nodes": { "A": ["src/main.ts", 1] }, "edges": [] },
+  "sequence": { "actors": { "A": ["src/main.ts", 1] }, "messages": [] },
+  "classDiagram": { "classes": { "A": ["src/main.ts", 1] }, "relations": [] }
+}
+```
+
 ---
 
 ## 5. Output Directory Layout
@@ -613,7 +624,7 @@ sequenceDiagram
 ### Example 3 — Both diagrams
 
 When the user asks for both `flowchart` and `sequence`, **combine them in a
-single `graph.mmd`**, separated by a blank line. The two diagrams share a
+single `graph.mmd`**, separated by a blank line. The diagrams share a
 single `graph.locs.json` with `flowchart` and `sequence` wrappers. The flowchart
 wrapper contains `nodes` and a fully covered `edges` array:
 
@@ -752,7 +763,7 @@ classDiagram
 | Using a path that does not exist or a line outside the file | Validator checks containment, file type, and line range | Fix the path or use a valid 1-based line number; removed review locations may refer to deleted files |
 | Wrong sequence message count | `messages` must match message-arrow order and count | Re-count message arrows; notes, groups, and fragment markers do not count |
 | Orphan location entry | Every node / actor ID and every edge identity must align with `graph.mmd` | Remove the orphan or add the matching Mermaid element |
-| Using flat-form locations for two diagrams | The two diagrams need `flowchart` / `sequence` wrappers | Use the wrapper form shown in Example 3 |
+| Using flat-form locations for multiple diagrams | Each diagram needs its own wrapper | Use `flowchart` / `sequence` / `classDiagram` wrappers, as in Example 3 |
 
 ---
 

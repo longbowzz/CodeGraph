@@ -18,45 +18,83 @@ function diagnostic(error, offset = 0) {
 export async function parseMermaid(text) {
   const source = String(text).replace(/\r\n?/g, '\n');
   const result = { flowchart: null, sequence: null, classDiagram: null };
-  // Always let the official grammar consume the entire input first. In
-  // particular, a header-looking line inside a multiline label is just text.
-  let wholeError;
+  let splitError;
+  let duplicateTypes = false;
+  const lines = source.split('\n');
+  const header = /^\s*(?:(?:flowchart|graph)\s+(?:TD|TB|BT|LR|RL)\b|sequenceDiagram\b|classDiagram(?:-v2)?\b)/;
+  const headerType = (line) => {
+    if (/^\s*(?:flowchart|graph)\b/.test(line)) return 'flowchart';
+    if (/^\s*sequenceDiagram\b/.test(line)) return 'sequence';
+    if (/^\s*classDiagram(?:-v2)?\b/.test(line)) return 'classDiagram';
+    return null;
+  };
+  const cuts = [];
+  for (let i = 1; i < lines.length; i++) if (header.test(lines[i])) cuts.push(i);
+  const headerCount = lines.filter((line) => header.test(line)).length;
+
+  const normalize = (type) => type === 'class' ? 'classDiagram' : type;
+  const assign = async (boundaries) => {
+    const starts = [0, ...boundaries];
+    const ends = [...boundaries, lines.length];
+    const slices = [];
+    for (let i = 0; i < starts.length; i++) {
+      const part = lines.slice(starts[i], ends[i]).join('\n');
+      if (part.trim() === '') return null;
+      try {
+        const slice = await parseDiagram(part);
+        const type = normalize(slice.type);
+        const expected = headerType(lines[starts[i]]);
+        if (expected !== null && type !== expected) return null;
+        slices.push(slice);
+      } catch (error) {
+        if (error instanceof ParseError) {
+          splitError = new ParseError(starts[i] + (Number(error.line) || 1), error.message);
+        } else {
+          splitError = diagnostic(error, starts[i]);
+        }
+        return null;
+      }
+    }
+    if (headerCount > 0 && slices.length !== headerCount) return null;
+    const types = slices.map((slice) => normalize(slice.type));
+    if (new Set(types).size !== types.length) {
+      duplicateTypes = true;
+      return null;
+    }
+    if (types.some((type) => !['flowchart', 'sequence', 'classDiagram'].includes(type))) return null;
+    for (const slice of slices) {
+      const { type, ...model } = slice;
+      result[normalize(type)] = model;
+    }
+    return result;
+  };
+
+  // A class diagram's grammar is permissive enough to swallow a following
+  // flowchart/sequence header, so try explicit boundaries before whole-file
+  // parsing. One boundary covers two diagrams; two cover all three.
+  for (const boundary of cuts) {
+    const assigned = await assign([boundary]);
+    if (assigned) return assigned;
+  }
+  for (let a = 0; a < cuts.length; a++) {
+    for (let b = a + 1; b < cuts.length; b++) {
+      const assigned = await assign([cuts[a], cuts[b]]);
+      if (assigned) return assigned;
+    }
+  }
+
+  if (duplicateTypes) {
+    throw new ParseError(1, 'Multiple diagrams of the same type are not supported in one file');
+  }
+
   try {
     const parsed = await parseDiagram(source);
     const type = parsed.type === 'class' ? 'classDiagram' : parsed.type;
     const { type: _type, ...model } = parsed;
     result[type] = model;
     return result;
-  } catch (error) { wholeError = error; }
-
-  // Mermaid itself accepts one document. For CodeGraph's two-document format,
-  // a boundary is valid only when the official parser accepts BOTH complete
-  // slices and their diagram types differ. Quotes in comments / sequence text
-  // cannot alter boundary detection, and no prefix or suffix is discarded.
-  const lines = source.split('\n');
-  for (let i = 1; i < lines.length; i++) {
-    if (!/^\s*(?:(?:flowchart|graph)\s+(?:TD|TB|BT|LR|RL)\b|sequenceDiagram\b|classDiagram(?:-v2)?\b)/.test(lines[i])) continue;
-    try {
-      const first = await parseDiagram(lines.slice(0, i).join('\n'));
-      let second;
-      try { second = await parseDiagram(lines.slice(i).join('\n')); }
-      catch (error) { throw diagnostic(error, i); }
-      if (first.type === second.type) throw new ParseError(i + 1, `Multiple ${first.type} diagrams are not supported in one file`);
-      const firstType = first.type === 'class' ? 'classDiagram' : first.type;
-      const secondType = second.type === 'class' ? 'classDiagram' : second.type;
-      const { type: _firstType, ...firstModel } = first;
-      const { type: _secondType, ...secondModel } = second;
-      if (firstType === 'classDiagram' || secondType === 'classDiagram') {
-        throw new ParseError(i + 1, 'A classDiagram cannot be combined with another diagram in one file');
-      }
-      result[firstType] = firstModel;
-      result[secondType] = secondModel;
-      return result;
-    } catch (error) {
-      // Prefer a diagnostic in a recognized second document to the whole-file
-      // error at its header, while still trying later possible boundaries.
-      if (error instanceof ParseError) wholeError = error;
-    }
+  } catch (error) {
+    if (error instanceof ParseError) throw splitError instanceof ParseError ? splitError : error;
+    throw splitError instanceof ParseError ? splitError : diagnostic(error);
   }
-  throw wholeError instanceof ParseError ? wholeError : diagnostic(wholeError);
 }

@@ -40,6 +40,20 @@ const cases = [
     expect: { flowNodes: 2, flowEdges: 1, seqActors: 2, seqMessages: 2 },
   },
   {
+    name: 'all three diagrams',
+    text: `flowchart LR
+    A --> B
+
+    sequenceDiagram
+    A->>B: work
+
+    classDiagram
+    class A
+    class B
+    A <|-- B`,
+    expect: { flowNodes: 2, flowEdges: 1, seqActors: 2, seqMessages: 1, classes: 2, relations: 1 },
+  },
+  {
     name: 'class basic',
     text: `classDiagram
     class Animal {
@@ -241,7 +255,7 @@ for (const [name, text, expected] of [
 
 // Keep negative coverage for genuinely malformed syntax only.
 const invalid = [
-  { name: 'third document rejected', text: 'flowchart TD\nA --> B\nsequenceDiagram\nA->>B: work\nflowchart LR\nC --> D' },
+  { name: 'duplicate diagram type rejected', text: 'flowchart TD\nA --> B\nsequenceDiagram\nA->>B: work\nflowchart LR\nC --> D' },
   { name: 'trailing junk rejected', text: 'flowchart TD\nA --> B\nsequenceDiagram\nA->>B: work\nnot valid Mermaid' },
   { name: 'unclosed loop', text: `sequenceDiagram\nloop retry\nA->>A: ping` },
   { name: 'message missing colon', text: `sequenceDiagram\nA->>B hi` },

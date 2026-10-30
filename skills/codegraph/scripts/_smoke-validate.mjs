@@ -130,6 +130,35 @@ C --> F[(写审计日志)]`,
     locs: { A: ['src/handler.ts', 0], B: ['src/handler.ts', 2] },
     expectOk: false,
   },
+  // All three diagram types together
+  {
+    name: 'flow + sequence + classDiagram happy',
+    mmd: `flowchart LR
+A --> B
+
+sequenceDiagram
+A->>B: work
+
+classDiagram
+class A
+class B
+A <|-- B`,
+    locs: {
+      flowchart: {
+        nodes: { A: ['src/handler.ts', 1], B: ['src/auth.ts', 1] },
+        edges: [{ from: 'A', to: 'B', occurrence: 1, loc: ['src/handler.ts', 2] }],
+      },
+      sequence: {
+        actors: { A: ['src/handler.ts', 1], B: ['src/auth.ts', 1] },
+        messages: [['src/handler.ts', 2]],
+      },
+      classDiagram: {
+        classes: { A: ['src/handler.ts', 1], B: ['src/auth.ts', 1] },
+        relations: [{ from: 'A', to: 'B', kind: 'extension', occurrence: 1, loc: ['src/handler.ts', 2] }],
+      },
+    },
+    expectOk: true,
+  },
   // Class diagram happy
   {
     name: 'classDiagram happy',

@@ -7,7 +7,8 @@ export function isRecord(value) {
 function isSequenceShape(value) {
   return isRecord(value) &&
     'actors' in value && 'messages' in value &&
-    !('flowchart' in value) && !('sequence' in value);
+    !('flowchart' in value) && !('sequence' in value) &&
+    !('classes' in value) && !('relations' in value) && !('classDiagram' in value);
 }
 
 function isClassShape(value) {
@@ -77,55 +78,51 @@ function readSequence(value) {
 export function normalizeLocations(parsed, raw) {
   if (!isRecord(raw)) {
     throw shapeError('graph.locs.json must be an object',
-      'Use a flowchart or sequence location object.');
+      'Use a flowchart, sequence, or classDiagram location object.');
+  }
+
+  const kinds = ['flowchart', 'sequence', 'classDiagram'].filter((kind) => parsed[kind]);
+  if (kinds.length === 0) {
+    throw shapeError('graph.mmd contains no supported diagram',
+      'Use a flowchart, sequenceDiagram, or classDiagram.');
   }
 
   let flowchart = null;
   let sequence = null;
   let classDiagram = null;
-  if (parsed.classDiagram && (parsed.flowchart || parsed.sequence)) {
-    throw shapeError(
-      'classDiagram cannot be combined with flowchart or sequence in one file',
-      'Build the class diagram as its own graph.mmd.');
-  }
-  if (parsed.classDiagram) {
-    if (raw.classDiagram && !raw.flowchart && !raw.sequence) {
-      classDiagram = readClass(raw.classDiagram);
-    } else if (isClassShape(raw)) {
-      classDiagram = readClass(raw);
-    } else {
-      throw shapeError(
+
+  if (kinds.length === 1) {
+    const kind = kinds[0];
+    if (kind === 'classDiagram') {
+      if (raw.classDiagram) classDiagram = readClass(raw.classDiagram);
+      else if (isClassShape(raw)) classDiagram = readClass(raw);
+      else throw shapeError(
         'graph.mmd has only a classDiagram; graph.locs.json must be { "classes": {...}, "relations": [...] } or { "classDiagram": {...} }',
         'Use the classDiagram form shown in SKILL.md.');
-    }
-  } else if (parsed.flowchart && parsed.sequence) {
-    if (!raw.flowchart || !raw.sequence) {
-      throw shapeError(
-        "graph.mmd contains both flowchart and sequence, but graph.locs.json does not have 'flowchart' and 'sequence' wrappers",
-        'Use the wrapper form: { "flowchart": {...flat...}, "sequence": { "actors": {...}, "messages": [...] } }.');
-    }
-    flowchart = readFlowchart(raw.flowchart);
-    sequence = readSequence(raw.sequence);
-  } else if (parsed.flowchart) {
-    if (raw.flowchart && !raw.sequence) {
-      flowchart = readFlowchart(raw.flowchart);
-    } else if (isFlatShape(raw)) {
-      flowchart = readFlowchart(raw);
-    } else {
-      throw shapeError(
+    } else if (kind === 'flowchart') {
+      if (raw.flowchart) flowchart = readFlowchart(raw.flowchart);
+      else if (isFlatShape(raw)) flowchart = readFlowchart(raw);
+      else throw shapeError(
         'graph.mmd has only a flowchart; graph.locs.json must be flat { "<id>": [file, line] } or { "flowchart": {...} }',
         'Use the flat form shown in SKILL.md §4.1.');
-    }
-  } else if (parsed.sequence) {
-    if (raw.sequence && !raw.flowchart) {
-      sequence = readSequence(raw.sequence);
-    } else if (isSequenceShape(raw)) {
-      sequence = readSequence(raw);
     } else {
-      throw shapeError(
+      if (raw.sequence) sequence = readSequence(raw.sequence);
+      else if (isSequenceShape(raw)) sequence = readSequence(raw);
+      else throw shapeError(
         'graph.mmd has only a sequence; graph.locs.json must be { "actors": {...}, "messages": [...] } or { "sequence": {...} }',
         'Use the sequence form shown in SKILL.md §4.2.');
     }
+  } else {
+    for (const kind of kinds) {
+      if (!(kind in raw)) {
+        throw shapeError(
+          `graph.mmd contains ${kinds.join(' + ')}, but graph.locs.json is missing the '${kind}' wrapper`,
+          'Use one wrapper per diagram: { "flowchart": {...}, "sequence": {...}, "classDiagram": {...} }.');
+      }
+    }
+    if (kinds.includes('flowchart')) flowchart = readFlowchart(raw.flowchart);
+    if (kinds.includes('sequence')) sequence = readSequence(raw.sequence);
+    if (kinds.includes('classDiagram')) classDiagram = readClass(raw.classDiagram);
   }
 
   return classDiagram ? { flowchart, sequence, classDiagram } : { flowchart, sequence };
