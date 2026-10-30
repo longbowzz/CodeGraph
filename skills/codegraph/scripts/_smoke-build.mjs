@@ -140,3 +140,40 @@ test('class diagram embeds sources for classes given as objects with stereotype 
   assert.equal(data.files['source.js'], 'class A {}\n');
   assert.equal(verifyHtml(html).ok, true);
 }));
+
+
+test('three diagram types build together', () => fixture(repo => {
+  writeFileSync(join(repo, 'source.js'), 'class A {\n  work() {}\n}\nclass B extends A {}\n');
+  const locations = {
+    flowchart: {
+      nodes: { A: ['source.js', 1], B: ['source.js', 4] },
+      edges: [{ from: 'A', to: 'B', occurrence: 1, loc: ['source.js', 2] }],
+    },
+    sequence: {
+      actors: { A: ['source.js', 1], B: ['source.js', 4] },
+      messages: [['source.js', 2]],
+    },
+    classDiagram: {
+      classes: { A: ['source.js', 1], B: ['source.js', 4] },
+      relations: [{ from: 'A', to: 'B', kind: 'extension', occurrence: 1, loc: ['source.js', 4] }],
+    },
+  };
+  const mmd = `flowchart LR
+A --> B
+
+sequenceDiagram
+A->>B: work
+
+classDiagram
+class A
+class B
+A <|-- B`;
+  const { result, html } = build(repo, mmd, locations);
+  assert.equal(result.status, 0, result.stderr);
+  const { data } = dataFrom(html);
+  assert.equal(data.flowchart.nodes.length, 2);
+  assert.equal(data.sequence.messages.length, 1);
+  assert.equal(data.classDiagram.classes.length, 2);
+  assert.equal(data.files['source.js'], 'class A {\n  work() {}\n}\nclass B extends A {}\n');
+  assert.equal(verifyHtml(html).ok, true);
+}));

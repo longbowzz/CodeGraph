@@ -10,9 +10,9 @@ CodeGraph is an Agent Skill for Claude Code, DeepSeek Harness, Cursor, Codex, an
 
 A normal diagram stops at the picture. CodeGraph keeps the connection to the code:
 
-- **Click to source** — click a node, edge, or sequence message to open the exact source line in your editor, or in an in-page panel.
+- **Click to source** — click a node, edge, sequence message, class, or relation to open the exact source line in your editor, or in an in-page panel.
 - **Review with context** — point the agent at a PR, commit, or `base..head` range and added / modified / removed elements are highlighted in the graph.
-- **Two ways to explain** — use a flow diagram for structure, or switch to **CodeWalkthrough** for a scrollable explainer page with sections, inline visuals, source links, and an optional self-test.
+- **Diagrams or a course** — use a flowchart, sequence diagram, or UML class diagram for structure; or switch to **CodeWalkthrough** for a scrollable explainer page with sections, inline visuals, source links, and an optional self-test.
 
 Everything is generated as one self-contained HTML file. There is no server, CDN, or runtime `npm install` on the viewer's machine, and the artifact works offline.
 
@@ -28,14 +28,24 @@ Everything is generated as one self-contained HTML file. There is no server, CDN
 
 ![Review-mode sequence diagram](images/sequence-diff-en.png)
 
-## Flow diagrams
+## Diagrams
 
-Ask the agent to draw a flow and it produces a single `graph.html`:
+Ask the agent to draw a flow or model classes; it produces a single `graph.html`:
 
-- flowchart, sequence, or UML class diagram;
+- flowchart, sequence diagram, or UML class diagram;
 - zoom, pan, hover, and click-to-source;
 - review mode for PRs, commits, and diffs;
 - works in any browser, online or offline.
+
+**Class diagrams** show classes, members, methods, and UML relations. Hover a
+class for its stereotype and responsibility; the rest of the graph dims so its
+direct neighbors stay visible. Click a class or a relation line to open source.
+
+![UML class diagram](images/class-diagram-en.png)
+
+By default, keep one artifact focused on one question. When requested, a single
+`graph.html` can combine one flowchart, one sequence diagram, and one class
+diagram, each on its own tab. Duplicate diagram types are rejected.
 
 ## CodeWalkthrough: turn code into a course
 
@@ -105,6 +115,10 @@ Just talk to your agent in the repository you want to analyze:
 
 > Use CodeGraph to draw the login flow as a sequence diagram.
 
+> Use CodeGraph to draw the class model of the payment module.
+
+> Combine a class diagram and a sequence diagram for this module.
+
 > Review PR #123 with CodeGraph — highlight what changed.
 
 > Use CodeGraph to explain the refund flow as an interactive webpage.
@@ -123,6 +137,10 @@ agents, open the reported HTML file in a browser.
   matches the business meaning — the agent reads the code for that.
 - Review colors: **green = added**, **orange = modified**, **gray = unchanged**.
 - Artifacts are snapshots of the current checkout. Rebuild after the code moves.
+- One artifact normally answers one question; combined pages support at most one
+  flowchart, one sequence diagram, and one class diagram.
+- Class entries may include optional `stereotype` and `summary` metadata; they
+  power the hover card but are not required for click-to-source.
 - CodeWalkthrough asks a few intake questions first; the self-test is optional
   and must be requested.
 - In DSH, the analyzed repository must stay inside the session workspace.
@@ -134,6 +152,7 @@ agents, open the reported HTML file in a browser.
 - [Agent contract](skills/codegraph/SKILL.md) — the full graph workflow and supported Mermaid subset.
 - [CodeWalkthrough contract](skills/codegraph/references/walkthrough.md) — intake, structure, and self-check.
 - [DeepSeek Harness bundle](dsh/README.md) — tools, cards, tabs, and configuration.
+- [Class diagram example](skills/codegraph/examples/class-diagram/) — CodeGraph's own pipeline as a UML class diagram.
 - [Example CodeWalkthrough body](skills/codegraph/examples/walkthrough-sample.html).
 - Found a bug or have an idea? [Open an issue](https://github.com/longbowzz/CodeGraph/issues).
 

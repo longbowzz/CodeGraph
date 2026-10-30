@@ -10,9 +10,9 @@ CodeGraph 是一个 Agent Skill，适用于 Claude Code、DeepSeek Harness、Cur
 
 普通 Mermaid 图到“一张图”就结束了。CodeGraph 保留了图和代码之间的连接：
 
-- **点击跳源码**——点节点、边或时序消息，直接打开对应源码行；可以在编辑器里打开，也可以在页内面板查看。
+- **点击跳源码**——点节点、边、时序消息、类或关系，直接打开对应源码行；可以在编辑器里打开，也可以在页内面板查看。
 - **带上下文 review**——把 PR、commit 或 `base..head` 范围交给 Agent，图里会用颜色标出新增 / 修改 / 删除的元素。
-- **两种讲解方式**——要看结构就用流程图；要讲清楚一个模块，就用 **CodeWalkthrough** 生成可滚动的长文讲解页，带小节、内联图、源码链接和可选自测。
+- **图表或课程**——用流程图、时序图或 UML 类图看结构；要讲清楚一个模块，就用 **CodeWalkthrough** 生成可滚动的长文讲解页，带小节、内联图、源码链接和可选自测。
 
 所有内容都会打包成一个自包含 HTML：不需要服务器、CDN，查看端也不需要 `npm install`，离线可用。
 
@@ -28,14 +28,22 @@ CodeGraph 是一个 Agent Skill，适用于 Claude Code、DeepSeek Harness、Cur
 
 ![Review 模式时序图](images/sequence-diff-en.png)
 
-## 流程图
+## 图表
 
-让 Agent 画一个流程，它会生成单个 `graph.html`：
+让 Agent 画一个流程或建立类模型，它会生成单个 `graph.html`：
 
 - 流程图、时序图或 UML 类图；
 - 缩放、平移、hover 和点击跳源码；
 - PR / commit / diff 的 review 模式；
 - 任意浏览器可用，离线也能看。
+
+**类图**展示类、字段、方法和 UML 关系。hover 一个类可以看到它的 stereotype
+和职责，其余节点会变淡，只保留直接邻居；点击类或关系线可以打开源码。
+
+![UML 类图](images/class-diagram-en.png)
+
+默认建议一个 artifact 只回答一个问题。如果用户明确要求，一个 `graph.html`
+可以同时包含一张流程图、一张时序图和一张类图，各自一个 tab；重复的图类型会被拒绝。
 
 ## CodeWalkthrough：把代码变成一门课
 
@@ -92,6 +100,10 @@ dsh plugin --profile web add -w @longbowzz/dsh-codegraph
 
 > 用 CodeGraph 画一下登录流程的时序图。
 
+> 用 CodeGraph 画出支付模块的类图。
+
+> 把这个模块的类图和时序图合并到一张页面里。
+
 > 用 CodeGraph review 一下 PR #123，标出改动。
 
 > 用 CodeGraph 为我介绍退款流程，做成一个可交互的网页。
@@ -105,6 +117,8 @@ dsh plugin --profile web add -w @longbowzz/dsh-codegraph
 - Agent 负责写 Mermaid 文本和源码位置表；校验器检查语法、结构、路径和行号，但不能证明标签的业务含义正确——这需要 Agent 阅读代码来保证。
 - Review 配色：**绿色 = 新增**，**橙色 = 修改**，**灰色 = 未变**。
 - 产物是当前 checkout 的快照；代码改动后需要重新生成。
+- 默认建议一个 artifact 只回答一个问题；合并页面最多包含一张流程图、一张时序图和一张类图。
+- 类条目可以带可选的 `stereotype` / `summary` 元数据；它们用于 hover 卡片，不是点击跳转的必填项。
 - CodeWalkthrough 会先确认读者、范围和深度；自测题是可选项，需要明确要求。
 - 在 DSH 中，被分析的仓库必须位于 session workspace 内。
 - CodeGraph 不是通用的“画个图”触发器。请明确提到 CodeGraph，或要求 CodeWalkthrough，Skill 才会激活。
@@ -114,6 +128,7 @@ dsh plugin --profile web add -w @longbowzz/dsh-codegraph
 - [Agent 规范](skills/codegraph/SKILL.md)——完整的画图流程和支持的 Mermaid 子集。
 - [CodeWalkthrough 规范](skills/codegraph/references/walkthrough.md)——信息确认、页面结构和自检。
 - [DeepSeek Harness 插件包](dsh/README.md)——工具、卡片、标签页和配置。
+- [类图示例](skills/codegraph/examples/class-diagram/)——把 CodeGraph 自己的构建管线画成 UML 类图。
 - [CodeWalkthrough 示例内容](skills/codegraph/examples/walkthrough-sample.html)。
 - 有问题或建议？[提 Issue](https://github.com/longbowzz/CodeGraph/issues)。
 
