@@ -23,7 +23,7 @@ import {
 } from 'node:fs'
 import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 
-const GENERATOR = { name: '@longbowzz/dsh-codegraph', version: '0.2.0' }
+const GENERATOR = { name: '@longbowzz/dsh-codegraph', version: '0.3.0' }
 const MAX_OUTPUT = 8 * 1024 * 1024
 const DEFAULT_TIMEOUT_MS = 180_000
 
