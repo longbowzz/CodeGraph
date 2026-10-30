@@ -431,3 +431,42 @@ body.cg-web-mode .cg-line-content .hljs-deletion { color: #b31d28; background-co
   #code-pane-body { color: #d7dde6; }
   body.cg-web-mode .cg-line-content [class^="hljs-"] { color: #d7dde6; }
 }
+
+/* Class diagram: Mermaid class boxes and relation paths. */
+.cg-class[data-loc="true"], .cg-relation[data-loc="true"] { cursor: pointer; }
+.cg-class:hover { filter: drop-shadow(0 0 3px var(--accent)); }
+.cg-relation-hit {
+  fill: none !important;
+  stroke: transparent !important;
+  stroke-width: 14 !important;
+  stroke-dasharray: none !important;
+  pointer-events: stroke;
+}
+.cg-relation:hover { filter: drop-shadow(0 0 2px var(--accent)); }
+svg.cg-svg .cg-class.cg-selected :is(rect, polygon, circle, ellipse, path) {
+  stroke: var(--accent) !important;
+  stroke-width: 2.5px !important;
+}
+.cg-class.cg-selected { filter: drop-shadow(0 0 5px var(--accent)); }
+.cg-relation.cg-selected {
+  stroke: var(--accent) !important;
+  stroke-width: 2.5px !important;
+  filter: drop-shadow(0 0 3px var(--accent));
+}
+.cg-class[data-diff="added"], .cg-relation[data-diff="added"] {
+  --cg-diff-fill: var(--diff-added-fill); --cg-diff-stroke: var(--diff-added-stroke);
+}
+.cg-class[data-diff="modified"], .cg-relation[data-diff="modified"] {
+  --cg-diff-fill: var(--diff-modified-fill); --cg-diff-stroke: var(--diff-modified-stroke);
+}
+.cg-class[data-diff="removed"], .cg-relation[data-diff="removed"] {
+  --cg-diff-fill: var(--diff-removed-fill); --cg-diff-stroke: var(--diff-removed-stroke);
+}
+svg.cg-svg .cg-class:is([data-diff="added"], [data-diff="modified"], [data-diff="removed"]) :is(rect, polygon, circle, ellipse, path) {
+  fill: var(--cg-diff-fill) !important; stroke: var(--cg-diff-stroke) !important;
+}
+svg.cg-svg .cg-relation:is([data-diff="added"], [data-diff="modified"], [data-diff="removed"]) {
+  stroke: var(--cg-diff-stroke) !important;
+}
+svg.cg-svg .cg-class[data-diff="removed"] :is(rect, polygon, circle, ellipse, path),
+svg.cg-svg .cg-relation[data-diff="removed"] { stroke-dasharray: 5 3 !important; }

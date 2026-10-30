@@ -71,13 +71,14 @@ export function kindsOf(mmd) {
   const kinds = []
   if (/^\s*(?:flowchart|graph)\b/m.test(mmd)) kinds.push('flowchart')
   if (/^\s*sequenceDiagram\b/m.test(mmd)) kinds.push('sequence')
+  if (/^\s*classDiagram(?:-v2)?\b/m.test(mmd)) kinds.push('classDiagram')
   return kinds
 }
 
 /** Counts derived from the location table (not from the Mermaid text). */
 export function statsOf(locs) {
   if (locs === null || typeof locs !== 'object' || Array.isArray(locs)) {
-    return { nodes: 0, edges: 0, actors: 0, messages: 0 }
+    return { nodes: 0, edges: 0, actors: 0, messages: 0, classes: 0, relations: 0 }
   }
   const flowchart = locs.flowchart !== undefined ? locs.flowchart : locs
   const nodes = flowchart?.nodes && typeof flowchart.nodes === 'object' && !Array.isArray(flowchart.nodes)
@@ -90,7 +91,13 @@ export function statsOf(locs) {
     ? Object.keys(sequence.actors).length
     : 0
   const messages = Array.isArray(sequence?.messages) ? sequence.messages.length : 0
-  return { nodes, edges, actors, messages }
+
+  const classDiagram = locs.classDiagram !== undefined ? locs.classDiagram : locs
+  const classes = classDiagram?.classes && typeof classDiagram.classes === 'object' && !Array.isArray(classDiagram.classes)
+    ? Object.keys(classDiagram.classes).length
+    : 0
+  const relations = Array.isArray(classDiagram?.relations) ? classDiagram.relations.length : 0
+  return { nodes, edges, actors, messages, classes, relations }
 }
 
 function nodeLaunch() {

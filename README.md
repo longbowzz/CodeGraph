@@ -32,7 +32,7 @@ Everything is generated as one self-contained HTML file. There is no server, CDN
 
 Ask the agent to draw a flow and it produces a single `graph.html`:
 
-- flowchart and/or sequence diagram;
+- flowchart, sequence, or UML class diagram;
 - zoom, pan, hover, and click-to-source;
 - review mode for PRs, commits, and diffs;
 - works in any browser, online or offline.

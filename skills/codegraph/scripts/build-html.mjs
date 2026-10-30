@@ -86,6 +86,14 @@ const merged = {
     }),
   } : null,
   sequence: parsed.sequence ? { ...parsed.sequence, locs: locations.sequence } : null,
+  classDiagram: parsed.classDiagram ? {
+    ...parsed.classDiagram,
+    locs: { classes: locations.classDiagram.classes },
+    relationLocs: Object.fromEntries(locations.classDiagram.relations.map(relation => [
+      JSON.stringify([relation.from, relation.to, relation.kind, relation.occurrence]),
+      relation.loc,
+    ])),
+  } : null,
 };
 
 // 4. Topic: derive from filename or arg
@@ -110,6 +118,7 @@ const dataBlob = {
   editor,
   flowchart: merged.flowchart || null,
   sequence: merged.sequence || null,
+  classDiagram: merged.classDiagram || null,
 };
 
 // 6a. Review mode: when --diff-base and --diff-head are both provided,

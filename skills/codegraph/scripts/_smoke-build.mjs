@@ -101,3 +101,24 @@ test('HTML verifier rejects truncated JSON and invalid inline JavaScript', () =>
     assert.equal(verifyHtml(html).ok, false, content);
   }
 }));
+
+
+test('class diagram embeds classes and relation locations', () => fixture(repo => {
+  writeFileSync(join(repo, 'source.js'), 'class A {}\nclass B extends A {}\n');
+  const locations = {
+    classDiagram: {
+      classes: { A: ['source.js', 1], B: ['source.js', 2] },
+      relations: [
+        { from: 'A', to: 'B', kind: 'extension', occurrence: 1, loc: ['source.js', 2] },
+      ],
+    },
+  };
+  const { result, html } = build(repo, 'classDiagram\nA <|-- B', locations);
+  assert.equal(result.status, 0, result.stderr);
+  const { data } = dataFrom(html);
+  assert.deepEqual(data.classDiagram.locs.classes, locations.classDiagram.classes);
+  assert.deepEqual(data.classDiagram.relationLocs, {
+    '["A","B","extension",1]': ['source.js', 2],
+  });
+  assert.equal(verifyHtml(html).ok, true);
+}));

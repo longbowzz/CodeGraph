@@ -93,6 +93,7 @@ try {
 let flowLocs = null;   // Map<id, [file, line]>
 let edgeLocs = null;   // Structured flowchart form opts into exact edge coverage.
 let seqLocs = null;    // { actors: Map<id, [file,line]>, messages: [[file,line]] }
+let classLocs = null;  // { classes: Map<id, [file,line]>, relations: [...] }
 
 try {
   const locations = normalizeLocations(parsed, locsRaw);
@@ -111,9 +112,15 @@ try {
       messages: locations.sequence.messages,
     };
   }
+  if (locations.classDiagram) {
+    classLocs = {
+      classes: new Map(Object.entries(locations.classDiagram.classes)),
+      relations: locations.classDiagram.relations,
+    };
+  }
 } catch (e) {
   err(e.code || 'LOCS_SHAPE_MISMATCH', args.locs, e.message,
-    e.fix_hint || 'Use a flowchart or sequence location object.');
+    e.fix_hint || 'Use a flowchart, sequence, or classDiagram location object.');
   fail();
 }
 
@@ -210,6 +217,50 @@ if (seqLocs) {
     if (e) checkedEntries.push([`messages[${idx}]`, e, 'seq-msg']);
   }
 }
+if (classLocs) {
+  for (const [id, entry] of classLocs.classes.entries()) {
+    const e = validateEntry(entry, `classes.${id}`);
+    if (e) checkedEntries.push([`classes.${id}`, e, 'class']);
+  }
+  const mappedRelations = new Set();
+  const graphRelations = new Set(parsed.classDiagram.relations.map(relation => relation.id));
+  for (let idx = 0; idx < classLocs.relations.length; idx += 1) {
+    const relation = classLocs.relations[idx];
+    const key = `relations[${idx}]`;
+    if (!isRecord(relation) || typeof relation.from !== 'string' || !relation.from ||
+        typeof relation.to !== 'string' || !relation.to ||
+        typeof relation.kind !== 'string' || !relation.kind) {
+      err('LOCS_RELATION_SHAPE', `${args.locs}:${key}`,
+        'relation mapping must have non-empty from, to, kind, occurrence, and loc',
+        'Use { "from": "A", "to": "B", "kind": "extension", "occurrence": 1, "loc": ["file", 1] }.');
+      continue;
+    }
+    if (!Number.isSafeInteger(relation.occurrence) || relation.occurrence < 1) {
+      err('LOCS_RELATION_OCCURRENCE_INVALID', `${args.locs}:${key}`,
+        `occurrence must be a positive integer, got ${JSON.stringify(relation.occurrence)}`,
+        'Count relations with the same endpoints and kind in parsing order, starting at 1.');
+      continue;
+    }
+    const id = JSON.stringify([relation.from, relation.to, relation.kind, relation.occurrence]);
+    if (mappedRelations.has(id)) {
+      err('DUPLICATE_RELATION_LOC', `${args.locs}:${key}`, `duplicate relation mapping ${id}`,
+        'Keep exactly one location mapping per relation.');
+    }
+    mappedRelations.add(id);
+    if (!graphRelations.has(id)) {
+      err('ORPHAN_RELATION_LOC', `${args.locs}:${key}`, `no such class relation ${id}`,
+        'Use from, to, kind, and occurrence from graph.mmd.');
+    }
+    const entry = validateEntry(relation.loc, `${key}.loc`);
+    if (entry) checkedEntries.push([`${key}.loc`, entry, 'class-relation']);
+  }
+  for (const id of graphRelations) {
+    if (!mappedRelations.has(id)) {
+      err('MISSING_RELATION_LOC', args.locs, `class relation ${id} has no location mapping`,
+        'Add exactly one mapping with from, to, kind, occurrence, and loc for this relation.');
+    }
+  }
+}
 
 // ---------- 4. ID alignment ----------
 if (parsed.flowchart) {
@@ -227,6 +278,25 @@ if (parsed.flowchart) {
       err('ORPHAN_LOC', `${args.locs}`,
         `graph.locs.json has entry '${id}' but no such node exists in graph.mmd`,
         `Remove the '${id}' entry or fix the node id in graph.mmd.`);
+    }
+  }
+}
+
+if (parsed.classDiagram) {
+  const mmdClassIds = new Set(parsed.classDiagram.classes.map(klass => klass.id));
+  const locClassIds = new Set(classLocs ? classLocs.classes.keys() : []);
+  for (const id of mmdClassIds) {
+    if (!locClassIds.has(id)) {
+      err('MISSING_LOC', `${args.locs}`,
+        `class '${id}' has no entry in graph.locs.json.classes`,
+        `Add "${id}": ["<relative/path>", <line>] under "classes".`);
+    }
+  }
+  for (const id of locClassIds) {
+    if (!mmdClassIds.has(id)) {
+      err('ORPHAN_LOC', `${args.locs}`,
+        `graph.locs.json has class '${id}' but no such class exists in graph.mmd`,
+        `Remove the '${id}' entry from "classes" or add a matching class.`);
     }
   }
 }

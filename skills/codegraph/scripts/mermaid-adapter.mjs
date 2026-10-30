@@ -33,6 +33,44 @@ export async function parseDiagram(source) {
       }),
     };
   }
+  if (diagram.type === 'class' || diagram.type === 'classDiagram') {
+    const relationTypes = { 0: 'aggregation', 1: 'extension', 2: 'composition', 3: 'dependency', 4: 'lollipop' };
+    const relationKind = (relation) => {
+      const ends = [relation.type1, relation.type2]
+        .filter((value) => value !== 'none' && value !== undefined)
+        .map((value) => relationTypes[value] || String(value));
+      const kind = ends.length > 0 ? ends.join('-') : 'association';
+      // Mermaid encodes both `-->` and `..>` as a dependency end; only the
+      // dotted relation carries lineType 1. Keep the familiar UML distinction.
+      if (kind === 'dependency' && relation.lineType !== 1) return 'association';
+      return kind;
+    };
+    const occurrences = new Map();
+    return {
+      type: 'classDiagram', source, direction: db.getDirection() || 'TB',
+      classes: [...db.getClasses().values()].map((klass) => ({
+        id: klass.id, label: klass.label || klass.id, type: klass.type || '',
+        domId: klass.domId,
+        members: (klass.members || []).map((member) => member.text ?? String(member)),
+        methods: (klass.methods || []).map((method) => method.text ?? String(method)),
+        annotations: [...(klass.annotations || [])],
+      })),
+      relations: db.getRelations().map((relation) => {
+        const from = relation.id1;
+        const to = relation.id2;
+        const kind = relationKind(relation.relation);
+        const pair = JSON.stringify([from, to, kind]);
+        const occurrence = (occurrences.get(pair) || 0) + 1;
+        occurrences.set(pair, occurrence);
+        return {
+          from, to, kind, occurrence,
+          id: JSON.stringify([from, to, kind, occurrence]),
+          label: relation.title || '',
+          dashed: relation.relation.lineType === 1,
+        };
+      }),
+    };
+  }
   if (diagram.type === 'sequence') {
     const events = db.getMessages();
     const blocks = [], stack = [];
@@ -92,6 +130,22 @@ export async function render(id, source, options = {}) {
       }
       ids.get(edge.domId)?.setAttribute('data-cg-edge', edge.id);
     }
+  }
+  if (model.type === 'classDiagram') {
+    const ids = new Map([...svg.querySelectorAll('[id]')].map(el => [el.id, el]));
+    const classNodes = [...svg.querySelectorAll('g.node')];
+    for (const klass of model.classes) {
+      const el = ids.get(klass.domId) || classNodes.find(node => node.id.startsWith(`classId-${klass.id}-`));
+      if (!el) throw new Error(`Mermaid class node not found: ${klass.domId}`);
+      el.setAttribute('data-cg-class', klass.id);
+    }
+    const relationPaths = [...svg.querySelectorAll('path.relation')];
+    if (relationPaths.length !== model.relations.length) {
+      throw new Error(`Mermaid class relation count changed: expected ${model.relations.length}, got ${relationPaths.length}`);
+    }
+    model.relations.forEach((relation, index) => {
+      relationPaths[index].setAttribute('data-cg-relation', relation.id);
+    });
   }
   return { svg: new XMLSerializer().serializeToString(svg) };
 }

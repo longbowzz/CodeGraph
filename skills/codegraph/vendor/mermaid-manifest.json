@@ -12,12 +12,12 @@
   ],
   "files": {
     "mermaid.min.js": {
-      "bytes": 2724662,
-      "sha256": "8a7e819ef92e36858e87fdd9694f68429e643a126d07eacbe1dbeeecb1b3415c"
+      "bytes": 2726125,
+      "sha256": "a5df77a1fb866c342a30ead73fcf53ab88391f45c1070417ebbf60c7be569583"
     },
     "mermaid-parser.bundle.mjs": {
-      "bytes": 2740821,
-      "sha256": "a40f8d6dec9002d8b02134a1f413fd11160c2c7ea4b50479baa51a1570784d31"
+      "bytes": 2742284,
+      "sha256": "b50672bf22904a3b66925400873b5066a2b01a77d4311d4295a721645e8e461c"
     },
     "mermaid-LICENSE": {
       "bytes": 1089,

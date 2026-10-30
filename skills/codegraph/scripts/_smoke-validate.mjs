@@ -130,6 +130,42 @@ C --> F[(写审计日志)]`,
     locs: { A: ['src/handler.ts', 0], B: ['src/handler.ts', 2] },
     expectOk: false,
   },
+  // Class diagram happy
+  {
+    name: 'classDiagram happy',
+    mmd: `classDiagram
+class A
+class B
+A <|-- B`,
+    locs: {
+      classDiagram: {
+        classes: {
+          A: ['src/handler.ts', 1],
+          B: ['src/auth.ts', 1],
+        },
+        relations: [
+          { from: 'A', to: 'B', kind: 'extension', occurrence: 1, loc: ['src/handler.ts', 2] },
+        ],
+      },
+    },
+    expectOk: true,
+  },
+  // Class diagram missing relation location
+  {
+    name: 'classDiagram missing relation loc',
+    mmd: `classDiagram
+class A
+class B
+A <|-- B`,
+    locs: {
+      classDiagram: {
+        classes: { A: ['src/handler.ts', 1], B: ['src/auth.ts', 1] },
+        relations: [],
+      },
+    },
+    expectOk: false,
+    expectCode: 'MISSING_RELATION_LOC',
+  },
   // Sequence happy
   {
     name: 'sequence happy',

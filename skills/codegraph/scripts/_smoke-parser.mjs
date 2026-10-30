@@ -40,6 +40,17 @@ const cases = [
     expect: { flowNodes: 2, flowEdges: 1, seqActors: 2, seqMessages: 2 },
   },
   {
+    name: 'class basic',
+    text: `classDiagram
+    class Animal {
+      +name
+      +move()
+    }
+    class Dog
+    Animal <|-- Dog`,
+    expect: { classes: 2, relations: 1 },
+  },
+  {
     name: 'loop block',
     text: `sequenceDiagram
     participant A as Alice
@@ -65,6 +76,10 @@ for (const c of cases) {
       got.seqActors = r.sequence.actors.length;
       got.seqMessages = r.sequence.messages.length;
       got.blocks = r.sequence.blocks.length;
+    }
+    if (r.classDiagram) {
+      got.classes = r.classDiagram.classes.length;
+      got.relations = r.classDiagram.relations.length;
     }
     if (r.flowchart && !c.expect.flowNodes) {
       got.nodes = r.flowchart.nodes.length;

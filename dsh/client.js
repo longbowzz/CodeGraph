@@ -38,6 +38,9 @@ window.__ModuleLoader__.load({
       'card.edges': '{count} 条边',
       'card.actors': '{count} 个参与者',
       'card.messages': '{count} 条消息',
+      'card.classDiagram': '类图',
+      'card.classes': '{count} 个类',
+      'card.relations': '{count} 条关系',
       'card.summary': '{kinds} · {facts}',
       'card.noMeta': '图已生成，但结果信息不完整。',
       'tab.loading': '正在加载图…',
@@ -89,6 +92,9 @@ window.__ModuleLoader__.load({
       'card.edges': '{count} edges',
       'card.actors': '{count} actors',
       'card.messages': '{count} messages',
+      'card.classDiagram': 'Class',
+      'card.classes': '{count} classes',
+      'card.relations': '{count} relations',
       'card.summary': '{kinds} · {facts}',
       'card.noMeta': 'The graph was built, but its result metadata is incomplete.',
       'tab.loading': 'Loading graph…',
@@ -204,6 +210,7 @@ window.__ModuleLoader__.load({
     function kindLabel(t, kind) {
       if (kind === 'flowchart') return t('card.flowchart')
       if (kind === 'sequence') return t('card.sequence')
+      if (kind === 'classDiagram') return t('card.classDiagram')
       return kind
     }
 
@@ -216,6 +223,10 @@ window.__ModuleLoader__.load({
       if (meta.stats?.messages) {
         facts.push(fill(t('card.actors'), { count: meta.stats.actors ?? 0 }))
         facts.push(fill(t('card.messages'), { count: meta.stats.messages }))
+      }
+      if (meta.stats?.classes) {
+        facts.push(fill(t('card.classes'), { count: meta.stats.classes }))
+        facts.push(fill(t('card.relations'), { count: meta.stats.relations ?? 0 }))
       }
       if (meta.review?.base && meta.review?.head) facts.push(`${t('card.review')} ${meta.review.base}..${meta.review.head}`)
       return facts

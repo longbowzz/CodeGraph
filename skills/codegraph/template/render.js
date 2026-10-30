@@ -172,6 +172,10 @@
     for (const loc of Object.values(data.sequence.locs?.actors || {})) noteLine(loc);
     for (const loc of data.sequence.locs?.messages || []) noteLine(loc);
   }
+  if (data.classDiagram) {
+    for (const loc of Object.values(data.classDiagram.locs?.classes || {})) noteLine(loc);
+    for (const loc of Object.values(data.classDiagram.relationLocs || {})) noteLine(loc);
+  }
 
   function countLines(text) {
     if (typeof text !== 'string' || text === '') return 0;
@@ -293,7 +297,7 @@
       return;
     }
     if (target.closest('#cg-line-card, #code-pane, #splitter')) return;
-    if (target.closest('.cg-node, .cg-edge, .cg-msg, .cg-actor')) return;
+    if (target.closest('.cg-node, .cg-edge, .cg-msg, .cg-actor, .cg-class, .cg-relation')) return;
     hideLineCard();
     clearSelection();
   });
@@ -376,10 +380,12 @@
     hit.removeAttribute('id');
     hit.removeAttribute('style');
     hit.removeAttribute('data-cg-edge');
+    hit.removeAttribute('data-cg-relation');
     hit.removeAttribute('marker-start');
     hit.removeAttribute('marker-end');
     hit.setAttribute('class', className);
     path.parentNode.insertBefore(hit, path);
+    return hit;
   }
 
   function viewBoxBounds(root) {
@@ -533,6 +539,52 @@
     }
   }
 
+  function decorateClass(root, cl) {
+    const classById = new Map((cl.classes || []).map(klass => [klass.id, klass]));
+    const seenClasses = new Set();
+    for (const el of root.querySelectorAll('[data-cg-class]')) {
+      const id = el.getAttribute('data-cg-class');
+      const klass = classById.get(id);
+      if (!klass || seenClasses.has(id)) throw new Error(`Missing or duplicate Mermaid class marker: ${id || '(empty)'}`);
+      seenClasses.add(id);
+      const loc = cl.locs?.classes?.[id];
+      addClass(el, 'cg-class');
+      el.setAttribute('data-id', id);
+      el.setAttribute('data-loc', loc ? 'true' : 'false');
+      const diff = klass.diff || loc?.[2];
+      if (diff) el.setAttribute('data-diff', diff);
+      else el.removeAttribute('data-diff');
+    }
+    for (const id of classById.keys()) {
+      if (!seenClasses.has(id)) throw new Error(`Missing Mermaid class marker: ${id}`);
+    }
+
+    const relationById = new Map((cl.relations || []).map(relation => [relation.id, relation]));
+    const seenRelations = new Set();
+    for (const el of root.querySelectorAll('[data-cg-relation]')) {
+      const id = el.getAttribute('data-cg-relation');
+      const relation = relationById.get(id);
+      if (!relation || seenRelations.has(id)) throw new Error(`Missing or duplicate Mermaid relation marker: ${id || '(empty)'}`);
+      seenRelations.add(id);
+      const loc = cl.relationLocs?.[id];
+      addClass(el, 'cg-relation');
+      el.setAttribute('data-rel-id', id);
+      el.setAttribute('data-loc', loc ? 'true' : 'false');
+      const diff = relation.diff || loc?.[2];
+      if (diff) el.setAttribute('data-diff', diff);
+      else el.removeAttribute('data-diff');
+      if (el.localName === 'path') {
+        const hit = addHitPath(el, 'cg-relation-hit');
+        hit.classList.add('cg-relation');
+        hit.setAttribute('data-rel-id', id);
+        hit.setAttribute('data-loc', loc ? 'true' : 'false');
+      }
+    }
+    for (const id of relationById.keys()) {
+      if (!seenRelations.has(id)) throw new Error(`Missing Mermaid relation marker: ${id}`);
+    }
+  }
+
   async function renderDiagram(name, diagram, svg, theme) {
     if (!window.CodeGraphMermaid || typeof window.CodeGraphMermaid.render !== 'function') {
       throw new Error('CodeGraph Mermaid adapter is unavailable');
@@ -552,7 +604,8 @@
     if (!root || root.localName !== 'svg') throw new Error('Mermaid adapter returned invalid SVG');
     const bbox = viewBoxBounds(root);
     if (name === 'flowchart') decorateFlowchart(root, diagram);
-    else decorateSequence(root, diagram);
+    else if (name === 'sequence') decorateSequence(root, diagram);
+    else decorateClass(root, diagram);
 
     const viewport = document.createElementNS(SVG_NS, 'g');
     viewport.setAttribute('class', 'cg-viewport');
@@ -597,9 +650,11 @@
   // ============================================================
   const fcTab = document.getElementById('tab-flowchart');
   const sqTab = document.getElementById('tab-sequence');
+  const clTab = document.getElementById('tab-class');
 
   const fcSvg = document.getElementById('svg-flowchart');
   const sqSvg = document.getElementById('svg-sequence');
+  const clSvg = document.getElementById('svg-class');
 
   const state = {
     current: null,
@@ -611,7 +666,8 @@
   const renderErrors = new Map();
 
   function showRenderError(name, error) {
-    const message = `${name === 'flowchart' ? 'Flowchart' : 'Sequence'} render error: ${error.message || error}`;
+    const label = name === 'flowchart' ? 'Flowchart' : name === 'sequence' ? 'Sequence' : 'Class';
+    const message = `${label} render error: ${error.message || error}`;
     renderErrors.set(name, message);
     let notice = document.getElementById('cg-render-errors');
     if (!notice) {
@@ -634,6 +690,7 @@
     for (const [name, diagram, svg, tab] of [
       ['flowchart', data.flowchart, fcSvg, fcTab],
       ['sequence', data.sequence, sqSvg, sqTab],
+      ['class', data.classDiagram, clSvg, clTab],
     ]) {
       if (!diagram) {
         tab.classList.add('hidden');
@@ -665,6 +722,7 @@
     if (!state.current) {
       if (state.viewports.flowchart) switchTo('flowchart');
       else if (state.viewports.sequence) switchTo('sequence');
+      else if (state.viewports.class) switchTo('class');
     }
   }
 
@@ -699,13 +757,16 @@
     state.current = name;
     fcTab.classList.toggle('active', name === 'flowchart');
     sqTab.classList.toggle('active', name === 'sequence');
+    clTab.classList.toggle('active', name === 'class');
     fcSvg.style.display = name === 'flowchart' ? '' : 'none';
     sqSvg.style.display = name === 'sequence' ? '' : 'none';
+    clSvg.style.display = name === 'class' ? '' : 'none';
     applyTransform(name);
   }
 
   fcTab.addEventListener('click', () => switchTo('flowchart'));
   sqTab.addEventListener('click', () => switchTo('sequence'));
+  clTab.addEventListener('click', () => switchTo('class'));
 
   // Initial view is selected after the asynchronous Mermaid render completes.
 
@@ -734,7 +795,7 @@
 
   wrap.addEventListener('pointerdown', (e) => {
     // Don't pan when clicking on a node/edge
-    if (e.target.closest('.cg-node, .cg-edge, .cg-msg, .cg-actor')) return;
+    if (e.target.closest('.cg-node, .cg-edge, .cg-msg, .cg-actor, .cg-class, .cg-relation')) return;
     dragging = true;
     lastX = e.clientX; lastY = e.clientY;
     wrap.setPointerCapture(e.pointerId);
@@ -799,6 +860,28 @@
       const loc = data.sequence.locs.actors[id];
       if (loc) {
         selectElement(actorEl);
+        jumpTo(loc);
+      }
+    }
+  });
+
+  clSvg.addEventListener('click', (e) => {
+    const classEl = e.target.closest('.cg-class[data-loc="true"]');
+    if (classEl) {
+      const id = classEl.getAttribute('data-id');
+      const loc = data.classDiagram.locs.classes[id];
+      if (loc) {
+        selectElement(classEl);
+        jumpTo(loc);
+      }
+      return;
+    }
+    const relationEl = e.target.closest('.cg-relation[data-loc="true"]');
+    if (relationEl) {
+      const id = relationEl.getAttribute('data-rel-id');
+      const loc = data.classDiagram.relationLocs[id];
+      if (loc) {
+        selectElement(relationEl);
         jumpTo(loc);
       }
     }

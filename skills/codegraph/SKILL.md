@@ -166,7 +166,7 @@ reasonable interpretation, state it explicitly, and proceed.
 2. **Scope** — which directories/files are in scope.
 3. **Depth** — how many call layers deep to follow (default: 2).
 4. **Breadth** — within scope, fan out into sibling branches or stay linear.
-5. **Diagram type** — `flowchart`, `sequence`, or `both`.
+5. **Diagram type** — `flowchart`, `sequence`, `classDiagram`, or `both`.
 6. **Language** — what language to use for labels/messages (default: user's
    UI language; confirm once).
 
@@ -211,7 +211,7 @@ Report:
 ## 3. Review Mode
 
 Review mode produces a diff-aware diagram from a PR, single commit, `base..head`
-ref range, or the working tree. Every node / edge / actor / message is colored
+ref range, or the working tree. Every node / edge / actor / message / class / relation is colored
 by diff status:
 
 | Status | Color | Visual |
@@ -285,7 +285,8 @@ and vendored with the skill; see `vendor/mermaid-manifest.json` for bundle detai
 the syntax accepted by that engine and representable by CodeGraph's graph model
 and renderer. This is not a promise that every Mermaid diagram type or feature is
 supported. Each `graph.mmd` may contain one `graph` / `flowchart` diagram and/or
-one `sequenceDiagram`; other diagram types are outside this contract.
+one `sequenceDiagram`, or one `classDiagram`; class diagrams cannot be combined
+with another diagram in the same file. Other diagram types are outside this contract.
 
 Common constructs within this boundary include:
 
@@ -296,6 +297,9 @@ Common constructs within this boundary include:
   participants accepted by Mermaid; message arrows; activation and deactivation;
   notes; `loop`, `alt`, `opt`, `par`, `critical`, and `break` fragments; `rect`
   and `box` grouping; and `autonumber`.
+- **Class diagrams:** `classDiagram` classes, members, methods, annotations, and
+  UML relations (`<|--` extension, `*--` composition, `o--` aggregation,
+  `-->` association, `..>` dependency); namespaces and notes are visual-only.
 
 This list is representative, not an exhaustive feature matrix. Keep Mermaid
 syntax valid for the pinned engine. If a construct is not accepted by validation
@@ -468,6 +472,39 @@ relax the new format's full-edge-coverage requirement.
   location cannot express a message truthfully, split the diagram or narrow its
   semantics. Actor locations may identify their actual entry/declaration.
 
+### 4.3 For classDiagram
+
+```json
+{
+  "classDiagram": {
+    "classes": {
+      "OrderService": ["src/order.ts", 12],
+      "OrderRepository": ["src/order.ts", 2]
+    },
+    "relations": [
+      {
+        "from": "OrderService",
+        "to": "OrderRepository",
+        "kind": "dependency",
+        "occurrence": 1,
+        "loc": ["src/order.ts", 18]
+      }
+    ]
+  }
+}
+```
+
+- `classes` keys must exactly match the class IDs in `classDiagram` (Mermaid
+  also creates classes implicitly from a relation endpoint).
+- Each relation identity is `JSON.stringify([from, to, kind, occurrence])`.
+  `kind` is one of `association`, `extension`, `composition`, `aggregation`,
+  `dependency`, or `lollipop`; count repeated relations with the same endpoints
+  and kind from 1 in Mermaid order.
+- A class location identifies its declaration. A relation location identifies
+  the field/usage/extends statement that creates the relationship.
+- Members, methods, and annotations belong to the class box and are not mapped
+  separately. Namespaces and notes are visual-only.
+
 ---
 
 ## 5. Output Directory Layout
@@ -622,16 +659,48 @@ sequenceDiagram
 > shown in Example 3. Old flat node maps are legacy input only; their edge
 > navigation is an approximate source fallback.
 
+A real, project-specific example lives in `examples/class-diagram/` and maps CodeGraph's own build pipeline.
+
+### Example 4 — Class diagram only
+
+```
+classDiagram
+    class OrderService {
+      +place()
+    }
+    class OrderRepository {
+      +save()
+    }
+    OrderService ..> OrderRepository : uses
+```
+
+`graph.locs.json`:
+
+```json
+{
+  "classDiagram": {
+    "classes": {
+      "OrderService": ["src/orders/service.ts", 8],
+      "OrderRepository": ["src/orders/repository.ts", 4]
+    },
+    "relations": [
+      {"from": "OrderService", "to": "OrderRepository", "kind": "dependency", "occurrence": 1, "loc": ["src/orders/service.ts", 18]}
+    ]
+  }
+}
+```
+
 ---
 
 ## 7. Hard Rules
 
 1. **Topology is produced by you reading code.** Do not write or call any
    script that auto-extracts call relationships from source.
-2. **Every node / edge / actor / message must have a location.** Generated
-   flowcharts use `nodes`/`edges` with full edge coverage. Legacy flat maps are
-   readable only with approximate source fallback for edges (§4.1). Visual-only
-   groups, notes, and fragment markers do not require locations.
+2. **Every node / edge / actor / message / class / relation must have a location.**
+   Generated flowcharts use `nodes`/`edges` with full edge coverage, and class
+   diagrams use `classes`/`relations` with full relation coverage. Legacy flat
+   maps are readable only with approximate source fallback for edges (§4.1).
+   Visual-only groups, notes, and fragment markers do not require locations.
 3. **Paths are relative to the repo root.** No absolute paths. No `./` prefix.
 4. **Read source context to verify semantics.** Validation checks structure,
    paths, and line ranges; it cannot prove that natural-language labels describe
@@ -649,8 +718,9 @@ sequenceDiagram
    extra edges. Count each directed pair from 1 in Mermaid order, expanding
    chains left to right. Unrelated edges do not affect the count; regenerate
    matching records when reordering edges with the same directed endpoints.
-7. **Message count must match.** For sequence diagrams, the number of message
-   arrows in `graph.mmd` must equal `messages.length` in `graph.locs.json`.
+7. **Message and relation counts must match.** For sequence diagrams, the
+   number of message arrows in `graph.mmd` must equal `messages.length`; for
+   class diagrams, every relation needs exactly one mapping.
 8. **Use the user's language** for all node labels, message texts, notes, and
    the topic slug. Use English for code identifiers in labels (function names,
    HTTP methods, status codes).
@@ -665,11 +735,11 @@ sequenceDiagram
 | Mistake | Why it fails | Fix |
 |---|---|---|
 | Using syntax that the pinned Mermaid engine does not accept | Validation follows the fixed vendored engine version (see the Mermaid Support Contract) | Check the vendor manifest and use syntax supported by that version |
-| Assuming every Mermaid feature or diagram type is supported | CodeGraph supports a bounded flowchart / sequence workflow, not all Mermaid features (see the Mermaid Support Contract) | Keep to supported syntax that the generated view can represent faithfully |
+| Assuming every Mermaid feature or diagram type is supported | CodeGraph supports a bounded flowchart / sequence / classDiagram workflow, not all Mermaid features (see the Mermaid Support Contract) | Keep to supported syntax that the generated view can represent faithfully |
 | Treating subgraphs, groups, notes, or fragment markers as source-mapped elements | These are visual-only and do not need location records | Map all semantic nodes, edges, actors, and messages instead |
 | Expecting Mermaid callbacks or links to replace CodeGraph source navigation | CodeGraph click behavior is driven by semantic source locations | Use `graph.locs.json` for source navigation |
 | Relying on external image or icon URLs in an offline graph | External assets may not be available without a network | Keep essential meaning in text and locally available graph content |
-| Missing a node, edge, actor, or message location | Semantic source mappings require complete coverage | Add the exact matching record; for flowchart edges use the directed-pair occurrence identity (§4.1) |
+| Missing a node, edge, actor, message, class, or relation location | Semantic source mappings require complete coverage | Add the exact matching record; for flowchart edges use the directed-pair occurrence identity (§4.1), for class relations use from/to/kind/occurrence (§4.3) |
 | Reordering repeated edges without updating their occurrences | Edge identity is assigned per directed endpoint pair in Mermaid order | Regenerate the affected edge mappings (§4.1) |
 | Using a function header or nearby line as a behavior location | Structural validation cannot establish semantic correspondence | Read surrounding source and point to the actual statement; narrow or split the diagram if needed |
 | Using an absolute path or a `./` / `../` prefix | Paths must be relative to the repository root | Use the real repository-relative path |

@@ -32,7 +32,7 @@ CodeGraph 是一个 Agent Skill，适用于 Claude Code、DeepSeek Harness、Cur
 
 让 Agent 画一个流程，它会生成单个 `graph.html`：
 
-- 流程图和 / 或时序图；
+- 流程图、时序图或 UML 类图；
 - 缩放、平移、hover 和点击跳源码；
 - PR / commit / diff 的 review 模式；
 - 任意浏览器可用，离线也能看。

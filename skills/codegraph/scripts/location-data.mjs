@@ -10,10 +10,18 @@ function isSequenceShape(value) {
     !('flowchart' in value) && !('sequence' in value);
 }
 
+function isClassShape(value) {
+  return isRecord(value) &&
+    isRecord(value.classes) && Array.isArray(value.relations) &&
+    !('actors' in value) && !('messages' in value) &&
+    !('flowchart' in value) && !('sequence' in value) && !('classDiagram' in value);
+}
+
 function isFlatShape(value) {
   return isRecord(value) &&
     !('actors' in value) && !('messages' in value) &&
-    !('flowchart' in value) && !('sequence' in value);
+    !('classes' in value) && !('relations' in value) &&
+    !('flowchart' in value) && !('sequence' in value) && !('classDiagram' in value);
 }
 
 function shapeError(message, fixHint) {
@@ -45,6 +53,15 @@ function readFlowchart(value) {
   return { nodes: value.nodes, edges: value.edges };
 }
 
+function readClass(value) {
+  if (!isRecord(value) || !isRecord(value.classes) || !Array.isArray(value.relations)) {
+    throw shapeError(
+      'classDiagram locations require a classes object and a relations array',
+      'Use { "classes": { "Order": ["src/order.ts", 1] }, "relations": [{ "from": "Order", "to": "Repo", "kind": "dependency", "occurrence": 1, "loc": ["src/order.ts", 8] }] }.');
+  }
+  return { classes: value.classes, relations: value.relations };
+}
+
 function readSequence(value) {
   if (!isRecord(value) || !isRecord(value.actors) || !Array.isArray(value.messages)) {
     throw shapeError(
@@ -65,7 +82,23 @@ export function normalizeLocations(parsed, raw) {
 
   let flowchart = null;
   let sequence = null;
-  if (parsed.flowchart && parsed.sequence) {
+  let classDiagram = null;
+  if (parsed.classDiagram && (parsed.flowchart || parsed.sequence)) {
+    throw shapeError(
+      'classDiagram cannot be combined with flowchart or sequence in one file',
+      'Build the class diagram as its own graph.mmd.');
+  }
+  if (parsed.classDiagram) {
+    if (raw.classDiagram && !raw.flowchart && !raw.sequence) {
+      classDiagram = readClass(raw.classDiagram);
+    } else if (isClassShape(raw)) {
+      classDiagram = readClass(raw);
+    } else {
+      throw shapeError(
+        'graph.mmd has only a classDiagram; graph.locs.json must be { "classes": {...}, "relations": [...] } or { "classDiagram": {...} }',
+        'Use the classDiagram form shown in SKILL.md.');
+    }
+  } else if (parsed.flowchart && parsed.sequence) {
     if (!raw.flowchart || !raw.sequence) {
       throw shapeError(
         "graph.mmd contains both flowchart and sequence, but graph.locs.json does not have 'flowchart' and 'sequence' wrappers",
@@ -95,5 +128,5 @@ export function normalizeLocations(parsed, raw) {
     }
   }
 
-  return { flowchart, sequence };
+  return classDiagram ? { flowchart, sequence, classDiagram } : { flowchart, sequence };
 }

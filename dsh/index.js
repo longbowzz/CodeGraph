@@ -75,12 +75,12 @@ const BUILD_PARAMETERS = {
     },
     mmd: {
       type: 'string',
-      description: 'Mermaid flowchart and/or sequenceDiagram source. Load the codegraph skill first; it defines the supported syntax and label rules.',
+      description: 'Mermaid flowchart, sequenceDiagram, or classDiagram source. Load the codegraph skill first; it defines the supported syntax and label rules.',
     },
     locs: {
       type: 'object',
       additionalProperties: true,
-      description: 'Source-location table matching mmd exactly. Load the codegraph skill for the flowchart and sequence formats.',
+      description: 'Source-location table matching mmd exactly. Load the codegraph skill for the flowchart, sequence, and classDiagram formats.',
     },
     review: {
       type: 'object',
@@ -469,7 +469,7 @@ export function apply(ctx, config) {
       description:
         'Generate source-linked diagrams and long-form CodeWalkthrough explainers from a codebase, with diff-aware graph review mode.',
       whenToUse:
-        'Use when the user asks CodeGraph to visualize a flow, call sequence, lifecycle, or architecture path (graph workflow), or to introduce/explain/teach a module or flow as a long-form interactive explainer (CodeWalkthrough workflow) — even when they do not say CodeGraph.',
+        'Use when the user asks CodeGraph to visualize a flow, call sequence, lifecycle, architecture path, or UML class model (graph workflow), or to introduce/explain/teach a module or flow as a long-form interactive explainer (CodeWalkthrough workflow) — even when they do not say CodeGraph.',
       content: loadSkillBody(),
       path: resolve(SKILL_DIR, 'SKILL.md'),
       resourceBase: { kind: 'directory', path: SKILL_DIR },

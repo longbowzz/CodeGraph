@@ -1,0 +1,27 @@
+{
+  "classDiagram": {
+    "classes": {
+      "CodeGraphPlugin": ["dsh/index.js", 463],
+      "GraphBuilder": ["dsh/lib/build.js", 257],
+      "WalkthroughBuilder": ["dsh/lib/walkthrough.js", 49],
+      "Validator": ["skills/codegraph/scripts/validate.mjs", 63],
+      "HtmlBuilder": ["skills/codegraph/scripts/build-html.mjs", 54],
+      "WalkthroughHtmlBuilder": ["skills/codegraph/scripts/build-walkthrough.mjs", 169],
+      "MermaidAdapter": ["skills/codegraph/scripts/mermaid-adapter.mjs", 13],
+      "LocationTable": ["skills/codegraph/scripts/location-data.mjs", 77],
+      "Renderer": ["skills/codegraph/template/render.js", 588]
+    },
+    "relations": [
+      {"from": "CodeGraphPlugin", "to": "GraphBuilder", "kind": "association", "occurrence": 1, "loc": ["dsh/index.js", 483]},
+      {"from": "CodeGraphPlugin", "to": "WalkthroughBuilder", "kind": "association", "occurrence": 1, "loc": ["dsh/index.js", 487]},
+      {"from": "CodeGraphPlugin", "to": "Renderer", "kind": "association", "occurrence": 1, "loc": ["dsh/client.js", 610]},
+      {"from": "GraphBuilder", "to": "Validator", "kind": "association", "occurrence": 1, "loc": ["dsh/lib/build.js", 271]},
+      {"from": "GraphBuilder", "to": "HtmlBuilder", "kind": "association", "occurrence": 1, "loc": ["dsh/lib/build.js", 335]},
+      {"from": "WalkthroughBuilder", "to": "WalkthroughHtmlBuilder", "kind": "association", "occurrence": 1, "loc": ["dsh/lib/walkthrough.js", 81]},
+      {"from": "Validator", "to": "MermaidAdapter", "kind": "dependency", "occurrence": 1, "loc": ["skills/codegraph/scripts/validate.mjs", 70]},
+      {"from": "HtmlBuilder", "to": "MermaidAdapter", "kind": "dependency", "occurrence": 1, "loc": ["skills/codegraph/scripts/build-html.mjs", 57]},
+      {"from": "HtmlBuilder", "to": "LocationTable", "kind": "dependency", "occurrence": 1, "loc": ["skills/codegraph/scripts/build-html.mjs", 71]},
+      {"from": "Renderer", "to": "MermaidAdapter", "kind": "dependency", "occurrence": 1, "loc": ["skills/codegraph/template/render.js", 592]}
+    ]
+  }
+}
