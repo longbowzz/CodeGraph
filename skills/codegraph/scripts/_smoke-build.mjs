@@ -120,5 +120,23 @@ test('class diagram embeds classes and relation locations', () => fixture(repo =
   assert.deepEqual(data.classDiagram.relationLocs, {
     '["A","B","extension",1]': ['source.js', 2],
   });
+  assert.equal(data.files['source.js'], 'class A {}\nclass B extends A {}\n');
+  assert.equal(verifyHtml(html).ok, true);
+}));
+
+test('class diagram embeds sources for classes given as objects with stereotype and summary', () => fixture(repo => {
+  writeFileSync(join(repo, 'source.js'), 'class A {}\n');
+  const locations = {
+    classDiagram: {
+      classes: {
+        A: { loc: ['source.js', 1], stereotype: 'model', summary: 'One sentence.' },
+      },
+      relations: [],
+    },
+  };
+  const { result, html } = build(repo, 'classDiagram\nclass A', locations);
+  assert.equal(result.status, 0, result.stderr);
+  const { data } = dataFrom(html);
+  assert.equal(data.files['source.js'], 'class A {}\n');
   assert.equal(verifyHtml(html).ok, true);
 }));
