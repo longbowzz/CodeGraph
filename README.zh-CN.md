@@ -81,35 +81,32 @@ npx skills add longbowzz/CodeGraph --skill codegraph
 
 ### DeepSeek Harness
 
-DSH 的 profile 是相互隔离的，要装到**你实际启动的那个 profile**：
+DSH 的 profile 是相互隔离的；桌面 App 的 `desktop` profile 由 Electron
+应用管理，`dsh plugin --profile desktop …` 会被拒绝。请按你的运行方式安装：
 
-**桌面 App**（通常是 `desktop` profile）：
+**桌面 App**：在侧栏打开 **插件**，选择 **添加插件**，输入
+`@longbowzz/dsh-codegraph@0.4.0`，安装；如果提示启用 bundle，选择启用。
 
-```bash
-dsh plugin --profile desktop add -w @longbowzz/dsh-codegraph
-```
-
-**Web**（`dsh web`，使用 `web` profile）：
+**Web / CLI profile**（`dsh web` 使用 `web` profile）：
 
 ```bash
 dsh plugin --profile web add -w @longbowzz/dsh-codegraph
 ```
 
-`--profile web` 只影响 `dsh web`，**不会**让桌面 App 里出现插件。如果 App
-使用的是自定义 profile，把 `desktop` 换成对应名字。
+`--profile web` 只影响 `dsh web`，**不会**把插件加到桌面 App。如果启动的是
+其他 CLI 管理的 profile，把 `web` 换成对应名字。
 
-`-w` 会把依赖加到 profile 的 workspace root；部分 DSH 构建下 pnpm 要求显式指定。安装后需要**完全退出并重新打开 DSH**，再新建会话——bundle 和客户端 tab 在启动时加载，当前会话不会自动出现。
+`-w` 会把依赖加到 profile 的 workspace root；部分 DSH 构建下 pnpm 要求显式指定。安装后需要**完全退出并重新打开 DSH**，再新建会话——bundle 和客户端 tab 在启动时加载。
 
-可以检查 profile 是否包含 bundle：
+可以检查 CLI profile 是否包含 bundle：
 
 ```bash
-cat ~/.dsh/profiles/desktop/package.json
+cat ~/.dsh/profiles/web/package.json
 ```
 
 `dependencies` 和 `dsh.profile.bundles` 里都应该有 `@longbowzz/dsh-codegraph`。
 
 这个 bundle 还会注册 `codegraph_build`、`codegraph_walkthrough_build`、`codegraph_list` 三个工具，以及结果卡片和右侧栏的图 / 讲解页 tab。详见 [`dsh/README.md`](dsh/README.md)。
-
 ### 环境要求
 
 - **Node.js 18+**：运行 Skill 脚本；生成和查看产物不需要运行时 `npm install`。

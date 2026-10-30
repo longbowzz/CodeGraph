@@ -91,33 +91,31 @@ Run it from the target project. Add `-g` to install globally, or
 
 ### DeepSeek Harness
 
-DSH profiles are isolated. Install into the profile you actually boot:
+DSH profiles are isolated, and the Desktop app's `desktop` profile is managed by
+the Electron application — the `dsh plugin --profile desktop …` command is
+rejected. Use the install path that matches how you run DSH:
 
-**Desktop app** (normally the `desktop` profile):
+**Desktop app:** open **Plugins** in the sidebar, choose **Add plugin**, enter
+`@longbowzz/dsh-codegraph@0.4.0`, install it, and enable the bundle if prompted.
 
-```bash
-dsh plugin --profile desktop add -w @longbowzz/dsh-codegraph
-```
-
-**Web** (`dsh web`, which boots the `web` profile):
+**Web / CLI profiles** (`dsh web` uses the `web` profile):
 
 ```bash
 dsh plugin --profile web add -w @longbowzz/dsh-codegraph
 ```
 
-`--profile web` only affects `dsh web`; it does **not** make the plugin appear
-in the Desktop app. If the app uses a custom profile, replace `desktop` with
+`--profile web` only affects `dsh web`; it does **not** add the plugin to the
+Desktop app. If you boot a different CLI-managed profile, replace `web` with
 that profile name.
 
 The `-w` flag adds the bundle to the profile's workspace root; pnpm requires it
 on some DSH builds. After installing, **quit and reopen DSH** and start a new
-session — bundles and client tabs load at boot, so the current session will not
-pick them up.
+session — bundles and client tabs load at boot.
 
-Verify the profile contains the bundle:
+Verify a CLI-managed profile contains the bundle:
 
 ```bash
-cat ~/.dsh/profiles/desktop/package.json
+cat ~/.dsh/profiles/web/package.json
 ```
 
 `dependencies` and `dsh.profile.bundles` should both include
@@ -126,7 +124,6 @@ cat ~/.dsh/profiles/desktop/package.json
 The bundle adds the `codegraph_build`, `codegraph_walkthrough_build`, and
 `codegraph_list` tools, result cards, and a right-sidebar graph/walkthrough tab.
 See [`dsh/README.md`](dsh/README.md).
-
 ### Requirements
 
 - **Node.js 18+** for the skill scripts. No runtime `npm install` is needed to
