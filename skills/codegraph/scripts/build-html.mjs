@@ -175,6 +175,18 @@ if (merged.sequence?.locs) {
     if (Array.isArray(v) && v[0]) paths.add(v[0]);
   }
 }
+if (merged.classDiagram?.locs?.classes) {
+  for (const v of Object.values(merged.classDiagram.locs.classes)) {
+    // A class entry is either [file, line] or {loc: [file, line], ...}.
+    const loc = Array.isArray(v) ? v : v?.loc;
+    if (Array.isArray(loc) && loc[0]) paths.add(loc[0]);
+  }
+}
+if (merged.classDiagram?.relationLocs) {
+  for (const v of Object.values(merged.classDiagram.relationLocs)) {
+    if (Array.isArray(v) && v[0]) paths.add(v[0]);
+  }
+}
 const files = {};
 for (const rel of paths) {
   const abs = resolve(repoAbs, rel);
